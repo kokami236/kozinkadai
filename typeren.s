@@ -1,0 +1,394 @@
+.section .text
+.even
+MAIN:
+	ori.w #0x0008, USTINCT1 |USERMODEでのスタックポインタとしてレジスタA7を
+	/*走行レベルとレベル*/
+	move.w #0x0000, %SR |USERMODE レベル0
+	lea.l USER_STK_TOP, %SP |USERSTACK設定
+LEVEL_SELE:
+	move.l #SYSCALL_NUM_PUTSTRING, %D0 |レベル選択文章
+	move.l #0, %D1 |$chを0に
+	move.l #SELECT, %D2 |$p=#SELECT
+	move.b LENGTH, %D3|GETSTRINGのとりだすデータ数szを表すD3に#いらん
+	trap #0 
+LEVEL_SELE_LOOP:
+	move.l #SYSCALL_NUM_GETSTRING, %D0
+	move.l #0, %D1 | ch = 0 
+	move.l #LEVEL, %D2 | $p=$ #LEVEL
+	move.l #1, %D3 | size = 1 
+	trap #0
+	cmp.l #0, %d0
+	beq LEVEL_SELE_LOOP | 入力がないときはやり直し
+	/* 入力が123以外であったらやり直し */ 
+	cmp.b #'1', LEVEL
+	beq LEVEL_SELE_LOOP_BRE 
+	cmp.b #'2', LEVEL
+	beq LEVEL_SELE_LOOP_BRE 
+	cmp.b #'3', LEVEL
+	beq LEVEL_SELE_LOOP_BRE
+	bra LEVEL_SELE_LOOP | 入力が1,2,3以外であるので入力やり直し
+LEVEL_SELE_LOOP_BRE:
+	jsr LEVEL_TIMER | 入力レベルに応じてタイマ割り込み発生周期を計算
+	move.l #SYSCALL_NUM_PUTSTRING, %D0 | 選択したレベルを画面に表示
+	move.l #0, %D1 | ch = 0 
+	move.l #LEVEL, %D2 | p = #LEVEL 
+	move.l #3, %D3 | size = 3 
+	trap #0
+MAIN_RETURN:
+	** システムコールによる RESET_TIMER の起動
+	move.l #SYSCALL_NUM_RESET_TIMER, %D0 |たいま割り込みの停止
+	trap #0
+	move.w #0, TTC | TTC カウンタのリセット
+	cmpi.w #5, EXC | 問題をすべて表示したか確認 
+	beq STRING_COMPARISON_TRUE_END | すべて表示しているとき終了へ 
+	addi.w #1, EXC | 問題用カウンタ EXC +1
+	** システムコールによる SET_TIMER の起動
+	move.b #0x00, TT_FLG | 時間フラグセット 
+	move.l #SYSCALL_NUM_SET_TIMER, %D0 
+	move.w LEVEL_TIME, %d1 
+	move.l #TT, %D2
+	trap #0
+****************************************************************
+	*文字列
+***************************************************************
+PREP_EXAM:
+	jsr BOOTQ　|問題ごとにキューをすべて初期化
+	jsr EXAMPLE_CALC |今から表示する問題分の長さを取得
+	lea.l SIZE_EXAMPLE1, %a1
+	move.w EXC, %d0　
+	subq.w #1, %d0 |SIZE_EXAMPLE1の先頭からEXC-1のオフセットにある文字数を読み出し、レジスタ％d2に格納
+	add.l %d0, %a1
+	moveq.l #0, %d2
+	move.b (%a1), %d2
+	move.l #Q_TOP2, Q_PTR_START　|文字列の先頭にポインタ設定
+	move.l #Q_TOP2, Q_PTR_FINISH |問題の文字列の最後の１バイトさきにポインタ設定
+	add.l %d2, Q_PTR_FINISH |
+INQ_LOOP:|問題文字列をキューに格納
+	moveq.l #2, %d0 |問題用キューの番号である２をデータレジスタd0に
+	move.b (%a0)+, %d1 |%a0が指す問題文字列から１バイと１文字を%d1に読み込みその後インクリメント
+	jsr INQ_TYPE
+	subq.b #0x1, %d2 |処理済みの文字数のカウント、カウンタ%d2の値を1減らす
+	bcc INQ_LOOP
+	/* 問題を画面に表示 */
+	lea.l SIZE_EXAMPLE1,%a1 | 今から表示する問題文字列の文字数を取得
+	move.w EXC, %d0
+	subq.w #1, %d0
+	add.l %d0, %a1
+	moveq.l #0, %d2
+	move.b (%a1), %d2
+	move.l %d2, %d3 | d3 = 画面に表示する文字数（問題文字列の文字数）
+	move.l #SYSCALL_NUM_PUTSTRING, %D0 | 問題文字列の表示
+	move.l #0, %D1 | ch = 0
+	move.l #Q_TOP2,%D2 | p = #Q_TOP2
+	trap #0
+	/* 問題文字列の後に行頭と改行を挿入 */
+	move.l #SYSCALL_NUM_PUTSTRING, %D0
+	move.l #0, %D1 | ch = 0
+	move.l #TMSG,%D2 | p = #TMSG
+	moveq.l #2, %D3 | size = 2
+	trap #0
+******************************
+
+	/*
+	move.l #SYSCALL_NUM_PUTSTRING, %D0
+	move.l #0, %D1
+	move.l #PROBLEM_MSG, %D2
+	move.b LENGTH_PROBLEM_MSG, %D3
+	trap #0
+	move.l #SYSCALL_NUM_PUTSTRING, %D0
+	move.l #0, %D1
+	move.l #Q_TOP2, %D2
+	move.l Q_PTR_FINISH, %D3
+	sub.l #Q_TOP2, %D3
+	trap #0
+	move.l #SYSCALL_NUM_PUTSTRING, %D0
+	move.l #0, %D1
+	move.l #TMSG,%D2
+	moveq.l #2, %D3
+	trap #0*/
+******************************************************************
+* 入力を受け取る
+* 受け取った文字列比較
+******************************
+LOOP:
+	/* 時間制限によって次のもんだいへ */
+	moveq.l #0, %d0
+	move.b TT_FLG, %d0
+	cmp.b #0xff, %d0 | d0のTT_FLGを 0xffと比較（時間切れのばあい）
+	beq MAIN_RETURN | 時間切れ
+	move.l #SYSCALL_NUM_GETSTRING, %D0 | 入力受付
+	move.l #0, %D1 | ch = 0
+	move.l #BUF, %D2 | p = #BUF
+	move.l #256, %D3 | size = 256
+	trap #0
+	cmp.l #0, %D0 | 入力された文字列の大きさが０より大きいならば，文字列の比較
+	beq LOOP
+STRING_COMPARISON:|先頭を揃える
+	movea.l #BUF, %a1 | BUF（入力文字列）の先頭アドレス
+	movea.l #BUF_CORRECT, %a2 | 解答の文字を格納する領域の先頭アドレス
+	move.l #0, %d3 | 一致文字数を０で初期化
+STRING_COMPARISON_LOOP: |未比較の入力文字が０になるまで
+	move.l Q_PTR_START, %a0 | 問題の文字列の未比較の先頭アドレスをQ_PTR_STARTに設定
+	move.b (%a0), %d1 | Q_PTR_STARTをd1に
+	move.b (%a1)+, %d2 | 入力で得た文字列の未比較の先頭文字
+	subq.b #1, %d0 | 未比較の入力文字列の数を計算
+	cmp.b %d1, %d2 | 文字を比較
+
+	
+	beq STRING_COMPARISON_CORRECT | 一致するなら正解ムーブへ
+	cmp.b #0, %d0 | 比較する文字がないならば一旦送信
+	beq STRING_COMPARISON_SEND
+	bra STRING_COMPARISON_LOOP | 一致しない
+STRING_COMPARISON_CORRECT:
+	addq.l #1, Q_PTR_START | 一致しているので，まだ一致していない問題文字列の先
+	頭文字を１つ進める
+	move.b %d2, (%a2)+ | 一致文字を転送領域へ
+	addq #1, %d3 | 一致文字数をカウント→最終的には表示するべき正解文字数
+	cmp.b #0, %d0 | 入力文字の比較が完了しているか
+	bne STRING_COMPARISON_LOOP
+STRING_COMPARE_AND_SEND:
+	move.l #SYSCALL_NUM_PUTSTRING, %D0 | 一致文字列を画面に表示
+	move.l #0, %D1 | ch = 0
+	move.l #BUF_CORRECT,%D2 | p = #BUF_CORRECT | 正解した文字だけ表示
+	trap #0
+	/* 問題の終了判定 */
+	move.l Q_PTR_START, %a3 | 今の未比較の先頭アドレス
+	move.l Q_PTR_FINISH, %a4 | 問題文字列の最後の 1byte先のアドレス
+	cmp.l %a3, %a4
+	beq STRING_COMPARE_END | 未比較の先頭アドレスが，文字列の最後の 1byte先のアドレスに等しいとき，今の問題終了
+	bra LOOP
+STRING_COMPARE_END:
+	/* 問題文字列の後に行頭と改行を挿入 */
+	move.l #SYSCALL_NUM_PUTSTRING, %D0
+	move.l #0, %D1 | ch = 0
+	move.l #TMSG,%D2 | p = #TMSG
+	moveq.l #2, %D3 | size = 2
+	trap #0
+	bra MAIN_RETURN
+2
+STRING_COMPARE_TIMER_END:/*syscall_num_rreset_timerが３人になったら*/
+	move.l #SYSCALL_NUM_RESET_TIMER,%D0
+	trap #0
+	bra STRING_COMPARE_TIMER_END
+******************************
+** TT:タイマ割り込み時に呼び出される処理
+******************************
+TT:
+	movem.l %D0-%D7/%A0-%A6,-(%SP) | レジスタ退避
+	lea.l SIZE_REIDAI1, %a0 | 今表示している問題の大きさを取得
+	move.w EXC, %d0
+	subq.w #1, %d0
+	add.l %d0, %a0
+	moveq.l #0, %d0
+	move.b (%a0), %d0
+	moveq.l #0, %d1 | TTCカウンタの値を取得
+	move.w TTC, %d1
+	cmp.w %d0,%d1 | TTCカウンタで 問題文字列の文字数回実行したかどうか数える
+	beq TTEND | 文字数回（＝文字数秒）実行したら，タイマを止める
+	addi.w #1,TTC | TTCカウンタを 1つ増やして
+	bra TTKILL | そのまま戻る
+TTEND:
+	move.w #0,TTC | TTCカウンタのリセット
+	move.b #0xff, TT_FLG | 時間切れを意味するフラグを立てる
+	move.l #SYSCALL_NUM_PUTSTRING, %D0 | 行頭と改行で入力を区切る
+	moveq.l #0, %D1 | ch = 0
+	move.l #TMSG, %D2 | p = #TMSG
+	moveq.l #2, %D3 | size = 2
+	trap #0
+TTKILL:
+	movem.l (%SP)+,%D0-%D7/%A0-%A6 | レジスタ回復
+	rts
+****************************************************************
+*** 初期値のあるデータ領域
+****************************************************************
+.section .data
+TMSG:
+.ascii "¥r¥n" | ¥r: 行頭へ (キャリッジリターン)
+.even | ¥n: 次の行へ (ラインフィード)
+TTC:
+.dc.w 0
+.even
+.section .bss
+TT_FLG: | タイマの制限時間情報を格納するフラグ
+.ds.b 1 | 0xff:時間切れ 0x00:時間内
+.even
+****************************************************************
+*** 初期値のないデータ領域
+****************************************************************
+.section .bss
+BUF: | 入力で得た文字の格納領域
+.ds.b 256 | BUF[256]
+.even
+BUF_CORRECT: | 一致した文字のみの格納領域
+.ds.b 256 | BUF_CORRNCT[256]
+.even
+************************
+** プログラム領域ここまで
+************************
+****************************************
+** INQ_USER 問題用キューへのデータ書き込み
+** 引数：d0.l d1.b
+** 返り値：d0.l
+** a1.l: Q_TOPのメモリ番地
+** a2.l: Q_BOTTOMのメモリ番地
+** a3.l: Q_IN
+** d0.l: #no(指定されたキューの番号) -> 結果(0:失敗, 1:成功)
+** d1.b: 書き込むデータ(1byte)
+****************************************
+.section .text
+.even
+INQ_USER:
+	movem.l %d3/%a1-%a3,-(%sp)
+	mulu.w #Q_SIZE,%d0 /* d0 = #no*Q_SIZE */
+	lea.l Q_TOP0, %a1
+	adda.l %d0,%a1 /* a1 = Q_TOPのメモリ番地 */
+INQ_USER_STEP1:
+	move.l 264(%a1), %d0
+	cmpi.l #B_SIZE, %d0
+	bne INQ_USER_STEP2 /* Q_S = B_SIZE なら d0 = 0 で終了 */
+	moveq.l #0, %d0
+	bra INQ_USER_Finish
+INQ_USER_STEP2:
+	movea.l 256(%a1), %a3 /* a3 = Q_IN */
+	move.b %d1,(%a3)+ /* キューに d1のデータを入力 */
+INQ_USER_STEP3:
+	lea.l 255(%a1), %a2 /* a2 = Q_BOTTOMのメモリ番地 */
+	cmpa.l %a3, %a2
+	bcc INQ_USER_STEP4 /* Q_IN =< Q_BOTTOMなら分岐 */
+	movea.l %a1,%a3 /* a3 = Q_TOP */
+INQ_USER_STEP4:
+	move.l %a3,256(%a1) /* Q_IN = a3 */
+	addq.l #1,264(%a1) /* Q_S = Q_S + 1 */
+	moveq.l #1, %d0 /* d0 = 1 で終了 */
+INQ_USER_Finish:
+	movem.l (%sp)+, %d3/%a1-%a3
+	rts
+******************************
+** 送受信キュー用のメモリ領域確保
+******************************
+.equ B_SIZE, 256 /* キューのデータ領域サイズ */
+.equ Q_SIZE, B_SIZE+12 /* キューの全体サイズ */
+/* 受信キュー */
+.section .bss
+.even
+Q_TOP0: .ds.b B_SIZE-1 /* キューデータ領域の先頭番地 */
+Q_BOTTOM0: .ds.b 1 /* キューデータ領域の末尾番地 */
+Q_IN0: .ds.l 1 /* 書き込みポインタ */
+Q_OUT0: .ds.l 1 /* 読み出しポインタ */
+Q_S0: .ds.l 1 /* キューが保持するデータ数 */
+/* 送信キュー */
+.section .bss
+.even
+Q_TOP1: .ds.b B_SIZE-1 /* キューデータ領域の先頭番地 */
+Q_BOTTOM1: .ds.b 1 /* キューデータ領域の末尾番地 */
+Q_IN1: .ds.l 1 /* 書き込みポインタ */
+Q_OUT1: .ds.l 1 /* 読み出しポインタ */
+Q_S1: .ds.l 1 /* キューが保持するデータ数 */
+/* 問題の文字列用キュー */
+.section .bss
+.even
+Q_TOP2: .ds.b B_SIZE-1 /* キューデータ領域の先頭番地 */
+Q_BOTTOM2: .ds.b 1 /* キューデータ領域の末尾番地 */
+Q_IN2: .ds.l 1 /* 書き込みポインタ */
+Q_OUT2: .ds.l 1 /* 読み出しポインタ */
+Q_S2: .ds.l 1 /* キューが保持するデータ数 */
+Q_PTR_START: .ds.l 1 /* 未比較文字の先頭ポインタ */
+Q_PTR_FINISH: .ds.l 1 /* 未比較文字の最後ポインタ */
+****************************************
+** EXAMPLE_CALCULATE 表示する問題の先頭アドレスを計算する
+****************************************
+.section .text
+.even
+EXAMPLE_CALCULATE:
+	movem.l %D0-%D7/%A1-%A6,-(%SP) | レジスタ退避
+	lea.l EXAMPLE1,%a0
+	cmpi.w #1, EXC | 問題 1（Example1）のとき
+	beq EXAMPLE_CALCULATE_END
+	cmpi.w #2, EXC | 問題 2（Example2）のとき
+	beq EXAMPLE_CALCULATE_EXAMPLE2
+	cmpi.w #3, EXC | 問題 3（Example3）のとき
+	beq EXAMPLE_CALCULATE_EXAMPLE3
+	cmpi.w #4, EXC | 問題 4（Example4）のとき
+	beq EXAMPLE_CALCULATE_EXAMPLE4
+	cmpi.w #5, EXC | 問題 5（Example5）のとき
+	beq EXAMPLE_CALCULATE_EXAMPLE5
+EXAMPLE_CALCULATE_EXAMPLE2: | 問題 2
+	add.l #16, %a0
+	bra EXAMPLE_CALCULATE_END
+EXAMPLE_CALCULATE_EXAMPLE3: | 問題 3
+	add.l #32, %a0
+	bra EXAMPLE_CALCULATE_END
+EXAMPLE_CALCULATE_EXAMPLE4: | 問題 4
+	add.l #44, %a0
+	bra EXAMPLE_CALCULATE_END
+EXAMPLE_CALCULATE_EXAMPLE5: | 問題 5
+	add.l #64, %a0
+	bra EXAMPLE_CALCULATE_END
+EXAMPLE_CALCULATE_END:
+	movem.l (%SP)+,%D0-%D7/%A1-%A6 | レジスタ回復
+	rts
+****************************************
+** LEVEL_TIMER 時間を計算する
+** 出力 d1.w:タイマ割り込み発生周期
+****************************************
+.section .text
+.even
+LEVEL_TIMER:
+	movem.l %d0-%d7/%a0-%a6, -(%sp) | レジスタ退避
+	cmp.b #'1', LEVEL | LEVEL1のとき
+	beq LEVEL1
+	cmp.b #'2', LEVEL | LEVEL2のとき
+	beq LEVEL2
+	cmp.b #'3', LEVEL | LEVEL3のとき
+	beq LEVEL3
+LEVEL1:
+	move.w #9000, LEVEL_TIME | (LEVEL_TIME = #9000)
+	bra LEVEL_TIMER_END
+LEVEL2:
+	move.w #6000, LEVEL_TIME | (LEVEL_TIME = #6000)
+	bra LEVEL_TIMER_END
+LEVEL3:
+	move.w #3000, LEVEL_TIME | (LEVEL_TIME = #3000)
+	bra LEVEL_TIMER_END
+LEVEL_TIMER_END:
+	movem.l (%sp)+, %d0-%d7/%a0-%a6 | レジスタ回復
+	rts
+*********************
+** 表示する問題文字列
+*********************
+.section .data
+SIZE_EXAMPLE1: .dc.b 14 | Example1 の文字数
+SIZE_EXAMPLE2: .dc.b 13 | Example2 の文字数
+SIZE_EXAMPLE3: .dc.b 9 | Example3 の文字数
+SIZE_EXAMPLE4: .dc.b 17 | Example4 の文字数
+SIZE_EXAMPLE5: .dc.b 12 | Example5 の文字数
+.even
+EXAMPLE1: .ascii "denkikougakuka¥r¥n"
+.even
+EXAMPLE2: .ascii "mazideosoiyan¥r¥n"
+.even
+EXAMPLE3: .ascii "kanariiii¥r¥n"
+.even
+EXAMPLE4: .ascii "sakuraikyozyukami¥r¥n"
+.even
+EXAMPLE5: .ascii "sakuraikyouzy¥r¥n"
+.even
+EXC: | 問題用カウンタ（実行済みの問題数を記憶）
+.dc.w 0
+.even
+*********************
+** レベル選択領域
+*********************
+.section .data
+.even
+LEVEL: | 選択レベル
+.dc.b 0
+.ascii "¥r¥n"
+.even
+LEVEL_TIME: | 選択レベルに応じたタイマ割込み発生周期
+.dc.w 0
+.even
+LENGTH: | レベル選択文章の文字数
+.dc.b 45
+.even
+SELECT: .ascii "Please select a level of problem. (1, 2, 3)¥r¥n"
