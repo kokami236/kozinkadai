@@ -1,0 +1,52 @@
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+ram              0x0000000000000000 0x0000000000040000 xrw
+rom0             0x0000000000c00000 0x0000000000080000
+device           0x0000000000fff000 0x0000000000001000
+*default*        0x0000000000000000 0xffffffffffffffff
+
+Linker script and memory map
+
+LOAD typeren.o
+                [!provide]                        PROVIDE (__stack = 0x3fff0)
+
+.text           0x0000000000000400      0x360
+ *(.text)
+ .text          0x0000000000000400      0x360 typeren.o
+
+.data           0x0000000000000760       0xb1
+                0x0000000000000760                . = ALIGN (0x4)
+ *(.data)
+ .data          0x0000000000000760       0xb1 typeren.o
+
+.bss            0x0000000000000814      0x52e
+                0x0000000000000814                . = ALIGN (0x4)
+ *(.bss)
+ .bss           0x0000000000000814      0x52e typeren.o
+
+.stab
+ *(.stab)
+
+.stabstr
+ *(.stabstr)
+Address of section .text set to 0x400
+OUTPUT(typeren.abs.tmp160872 srec)
+
+Cross Reference Table
+
+Symbol                                            File
+BOOTQ　                                          typeren.o
+EXAMPLE_CALC                                      typeren.o
+INQ_TYPE                                          typeren.o
+Q_PTR_START　                                    typeren.o
+SIZE_REIDAI1                                      typeren.o
+STRING_COMPARISON_SEND                            typeren.o
+STRING_COMPARISON_TRUE_END                        typeren.o
+SYSCALL_NUM_GETSTRING                             typeren.o
+SYSCALL_NUM_PUTSTRING                             typeren.o
+SYSCALL_NUM_RESET_TIMER                           typeren.o
+SYSCALL_NUM_SET_TIMER                             typeren.o
+USER_STK_TOP                                      typeren.o
+USTINCT1                                          typeren.o

@@ -1,0 +1,43 @@
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+ram              0x0000000000000000 0x0000000000040000 xrw
+rom0             0x0000000000c00000 0x0000000000080000
+device           0x0000000000fff000 0x0000000000001000
+*default*        0x0000000000000000 0xffffffffffffffff
+
+Linker script and memory map
+
+LOAD main.o
+                [!provide]                        PROVIDE (__stack = 0x3fff0)
+
+.text           0x0000000000000400       0x8c
+ *(.text)
+ .text          0x0000000000000400       0x8c main.o
+
+.data           0x000000000000048c        0xa
+                0x000000000000048c                . = ALIGN (0x4)
+ *(.data)
+ .data          0x000000000000048c        0xa main.o
+
+.bss            0x0000000000000498     0x4100
+                0x0000000000000498                . = ALIGN (0x4)
+ *(.bss)
+ .bss           0x0000000000000498     0x4100 main.o
+
+.stab
+ *(.stab)
+
+.stabstr
+ *(.stabstr)
+Address of section .text set to 0x400
+OUTPUT(main.abs.tmp219013 srec)
+
+Cross Reference Table
+
+Symbol                                            File
+SYSCALL_NUM_GETSTRING                             main.o
+SYSCALL_NUM_PUTSTRING                             main.o
+SYSCALL_NUM_RESET_TIMER                           main.o
+SYSCALL_NUM_SET_TIMER                             main.o

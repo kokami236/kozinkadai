@@ -1,0 +1,45 @@
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+ram              0x0000000000000000 0x0000000000040000 xrw
+rom0             0x0000000000c00000 0x0000000000080000
+device           0x0000000000fff000 0x0000000000001000
+*default*        0x0000000000000000 0xffffffffffffffff
+
+Linker script and memory map
+
+LOAD syscall.o
+                [!provide]                        PROVIDE (__stack = 0x3fff0)
+
+.text           0x0000000000000400       0x5e
+ *(.text)
+ .text          0x0000000000000400       0x5e syscall.o
+
+.data           0x0000000000000460        0x0
+                0x0000000000000460                . = ALIGN (0x4)
+ *(.data)
+ .data          0x0000000000000460        0x0 syscall.o
+
+.bss            0x0000000000000460        0x0
+                0x0000000000000460                . = ALIGN (0x4)
+ *(.bss)
+ .bss           0x0000000000000460        0x0 syscall.o
+
+.stab
+ *(.stab)
+
+.stabstr
+ *(.stabstr)
+Address of section .text set to 0x400
+OUTPUT(syscall.abs.tmp375677 srec)
+
+Cross Reference Table
+
+Symbol                                            File
+.L_end                                            syscall.o
+.Lend                                             syscall.o
+GETSTRING                                         syscall.o
+PUTSTRING                                         syscall.o
+RESET_TIMER                                       syscall.o
+SET_TIMER                                         syscall.o

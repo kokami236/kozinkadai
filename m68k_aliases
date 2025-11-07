@@ -1,0 +1,10 @@
+alias m68k-as='docker run --rm -v $(pwd):/work -w /work m68k m68k-as'
+alias as=m68k-as
+alias m68k-emu='docker run -it --rm -v $(pwd):/work -w /work \
+    --mount type=bind,source=/tmp/.X11-unix,target=/tmp/.X11-unix \
+    --mount type=bind,source=/mnt/wslg,target=/mnt/wslg \
+    --env DISPLAY=${DISPLAY} \
+    --env WAYLAND_DISPLAY=${WAYLAND_DISPLAY} \
+    --env XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR} \
+    m68k m68k-emu'
+

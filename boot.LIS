@@ -1,0 +1,708 @@
+                         4 .list
+                         5 /* レジスタ定義 */
+                         6 .equ REGBASE, 0xfff000 | DMAP を使用．
+                         7 .equ IOBASE, 0x00d00000
+                         8 
+                         9 /* 割り込み関係のレジスタ*/
+                        10 .equ IVR, REGBASE+0x300 | 割り込みベクタレジスタ
+                        11 .equ IMR, REGBASE+0x304 | 割り込みマスクレジスタ
+                        12 .equ ISR, REGBASE+0x30c | 割り込みステータスレジスタ
+                        13 .equ IPR, REGBASE+0x310 | 割り込みペンディングレジスタ
+                        14 
+                        15 /* タイマ関係のレジスタ */
+                        16 .equ TCTL1, REGBASE+0x600  | タイマ１コントロールレジスタ
+                        17 .equ TPRER1, REGBASE+0x602 | タイマ１プリスケーラレジスタ
+                        18 .equ TCMP1, REGBASE+0x604  | タイマ１コンペアレジスタ
+                        19 .equ TCN1, REGBASE+0x608   | タイマ１カウンタレジスタ
+                        20 .equ TSTAT1, REGBASE+0x60a | タイマ１ステータスレジスタ
+                        21 
+                        22 /* UART1（送受信）関係のレジスタ */
+                        23 .equ USTCNT1, REGBASE+0x900 | UART1 ステータス/コントロールレジスタ
+                        24 .equ UBAUD1, REGBASE+0x902  | UART1 ボーコントロールレジスタ
+                        25 .equ URX1, REGBASE+0x904    | UART1 受信レジスタ
+                        26 .equ UTX1, REGBASE+0x906    | UART1 送信レジスタ
+                        27 
+                        28 /* LED */
+                        29 .equ LED7, IOBASE+0x000002f | ボード搭載の LED 用レジスタ
+                        30 .equ LED6, IOBASE+0x000002d | 使用法については付録 A.4.3.1
+                        31 .equ LED5, IOBASE+0x000002b
+                        32 .equ LED4, IOBASE+0x0000029
+                        33 .equ LED3, IOBASE+0x000003f
+                        34 .equ LED2, IOBASE+0x000003d
+                        35 .equ LED1, IOBASE+0x000003b
+                        36 .equ LED0, IOBASE+0x0000039
+                        37 
+                        38 /* スタック */
+                        39 .section .bss
+                        40 .even
+0014d0 0000 0000        41 SYS_STK:.ds.b 0x4000
+       0000 0000        41 
+       0000 0000        41 
+       0000 0000        41 
+       0000 0000        41 
+                        42 .even
+                        43 SYS_STK_TOP: | システムスタック領域の最後尾
+                        44 
+                        45 /* 初期化 */
+                        46 .section .text
+                        47 .even
+                        48 boot:
+000400 46FC 2700        49     move.w #0x2700, %SR     | 割り込み禁止
+000404 4FF9 0000        50     lea.l SYS_STK_TOP, %SP  | スタックポインタの設定
+       0000             50 
+                        51 
+                        52     /* 割り込みコントローラの初期化 */
+00040a 13FC 0040        53     move.b #0x40, IVR       | ユーザ割り込みベクタ番号を0x40+levelに設定
+       00FF F300        53 
+000412 23FC 00FF        54     move.l #0x00ffffff, IMR | 全割り込みマスク
+       FFFF 00FF        54 
+       F304             54 
+                        55 
+00041c 21FC 0000        56     move.l #syscall_handler, 0x080 | TRAP#0の割り込みベクタを登録
+       0000 0080        56 
+000424 21FC 0000        57     move.l #uart1_interrupt, 0x110 | UART1の割り込みベクタを登録
+       0000 0110        57 
+00042c 21FC 0000        58     move.l #tmr1_interrupt, 0x118  | TIMER1の割り込みベクタを登録
+       0000 0118        58 
+                        59 
+                        60     /* 送受信 (UART1) 関係の初期化 (割り込みレベルは 4 に固定されている) *
+000434 33FC 0000        61     move.w #0x0000, USTCNT1 | リセット
+       00FF F900        61 
+                        62     * move.w #0xe100, USTCNT1 | 送受信可能, パリティなし, 1 stop, 8 bit, 送受割り込
+00043c 33FC E108        63     move.w #0xe108, USTCNT1 | 受信割り込み可能
+       00FF F900        63 
+                        64     * move.w #0xe104, USTCNT1   | 送信割り込み可能
+000444 33FC 0038        65     move.w #0x0038, UBAUD1  | baud rate = 230400 bps
+       00FF F902        65 
+                        66 
+                        67     /* タイマ関係の初期化 (割り込みレベルは 6 に固定されている) */
+00044c 33FC 0004        68     move.w #0x0004, TCTL1   | restart, 割り込み不可,
+       00FF F600        68 
+                        69                             | システムクロックの 1/16 を単位として計時，
+                        70                             | タイマ使用停止
+                        71 
+000454 4EBA 0066        72     jsr	Init_Q            | キューの初期化
+                        73 
+                        74     * move.l #0xff3ffb, IMR | UART1の割り込みを許可
+000458 23FC 00FF        75     move.l #0xff3ff9, IMR | UART1,TIMERの割り込みを許可
+       3FF9 00FF        75 
+       F304             75 
+000462 46FC 2000        76     move.w #0x2000, %SR   | スーパーバイザモード・走行レベルは0
+000466 6000 032E        77     bra MAIN
+                        78 
+                        79 
+                        80 
+                        81 /* 割り込みハンドラ */
+                        82 .include "syscall.s"
+                        -4 .equ SYSCALL_NUM_GETSTRING,   1
+                        -3 .equ SYSCALL_NUM_PUTSTRING,   2
+                        -2 .equ SYSCALL_NUM_RESET_TIMER, 3
+                        -1 .equ SYSCALL_NUM_SET_TIMER,   4
+                         0 
+                         1 /*
+                         2  * syscall_handler
+                         3  * %d0: syscall number
+                         4  * %dx: syscall argument
+                         5  */
+                         6 syscall_handler:
+00046a 48E7 7FFE         7     movem.l %D1-%D7/%A0-%A6, -(%SP)
+                         8 
+00046e 0C80 0000         9 	cmpi.l #SYSCALL_NUM_GETSTRING, %D0
+       0001              9 
+000474 6700 0026        10 	beq CALL_GETSTRING
+                        11 
+000478 0C80 0000        12 	cmpi.l #SYSCALL_NUM_PUTSTRING, %D0
+       0002             12 
+00047e 6700 0024        13 	beq CALL_PUTSTRING
+                        14     
+000482 0C80 0000        15     cmpi.l #SYSCALL_NUM_RESET_TIMER, %D0
+       0003             15 
+000488 6700 0022        16     beq CALL_RESET_TIMER
+                        17     
+                        18 
+00048c 0C80 0000        19 	cmpi.l #SYSCALL_NUM_SET_TIMER, %D0
+       0004             19 
+000492 6700 0020        20 	beq CALL_SET_TIMER
+                        21     
+                        22     
+                        23 END_SYSCALL_HNDR:
+000496 4CDF 7FFE        24     movem.l (%SP)+, %D1-%D7/%A0-%A6
+00049a 4E73             25 	rte
+                        26 
+                        27 CALL_GETSTRING:
+00049c 4EBA 0226        28 	jsr GETSTRING
+0004a0 6000 FFF4        29 	 bra END_SYSCALL_HNDR
+                        30 
+                        31 CALL_PUTSTRING:
+0004a4 4EBA 00B4        32 	jsr PUTSTRING
+0004a8 6000 FFEC        33 	bra END_SYSCALL_HNDR
+                        34 	
+                        35 CALL_RESET_TIMER:
+0004ac 4EBA 024E        36 	jsr RESET_TIMER
+0004b0 6000 FFE4        37 	bra END_SYSCALL_HNDR
+                        38 CALL_SET_TIMER:
+0004b4 4EBA 0250        39 	jsr SET_TIMER
+0004b8 6000 FFDC        40 	bra END_SYSCALL_HNDR
+                        83 .include "queue.s"
+                        -4 .section .text
+                        -3 
+                        -2 
+                        -1 *****************キューの初期化処理*******************************************************
+                         0 Init_Q:
+0004bc 48E7 F8F0         1 	movem.l %d0-%d4/%a0-%a3,-(%sp)
+0004c0 7000              2 	moveq 	#0, %d0			/* d0: キュー番号かつカウンタ */
+0004c2 43F9 0000         3 	lea.l	Q_INFO, %a1		/* a1: Q_INFOの開始地点 */
+       0000              3 
+0004c8 45F9 0000         4 	lea.l	Q0_START, %a2 		/* a2: Q0の先頭番地 */
+       0000              4 
+0004ce 343C 0100         5 	move.w	#B_SIZE, %d2		/* d2: 256 */
+0004d2 363C 0014         6 	move.w	#Q_INFO_SIZE, %d3	/* d3: 20 (キュー１個分の情報量) */
+                         7 
+                         8 LOOP_Init:				/* d4: 計算用 */
+0004d6 2800              9 	move.l	%d0,	%d4
+0004d8 C8C3             10 	mulu	%d3,	%d4		/* d4 = d0 * Q_INFO_SIZE */
+0004da 2044             11 	move.l	%d4,	%a0
+0004dc D1C9             12 	add.l	%a1,	%a0		/* a0 = Q_INFO + d0 * Q_INFO_SIZE(各キュー情報の先頭) */
+                        13 	
+0004de 2800             14 	move.l	%d0,	%d4			
+0004e0 C8C2             15 	mulu	%d2,	%d4		/* d4 = d0 * B_SIZE */
+0004e2 2644             16 	move.l	%d4,	%a3
+0004e4 D7CA             17 	add.l	%a2,	%a3		/* a3 = Q0_START + d0 * B_SIZE(各キューの先頭) */
+                        18 
+0004e6 214B 0000        19 	move.l	%a3,	TOP_OFS(%a0)	
+0004ea 214B 0004        20 	move.l	%a3,	OUT_OFS(%a0)
+0004ee 214B 0008        21 	move.l	%a3,	IN_OFS(%a0)
+                        22 	
+0004f2 D7FC 0000        23 	adda.l	#B_SIZE_MINUS,	%a3
+       00FF             23 
+0004f8 214B 000C        24 	move.l	%a3,	BOTTOM_OFS(%a0)
+0004fc 217C 0000        25 	move.l	#0,	S_OFS(%a0)
+       0000 0010        25 
+                        26 
+000504 5240             27 	addq	#1,	%d0
+000506 0C40 0002        28 	cmp	#2,	%d0
+00050a 6600 FFCA        29 	bne	LOOP_Init		/* キュー2つ分繰返し */
+                        30 	
+                        31 end_Init:	
+00050e 4CDF 0F1F        32 	movem.l (%sp)+, %d0-%d4/%a0-%a3
+000512 4E75             33 	rts
+                        34 ***************************************************************************************************
+                        35 
+                        36 
+                        37 ******INTERPUT*************************************************************************************
+                        38 ** 入力：d1.l（チャンネル）	
+                        39 INTERPUT:
+000514 48E7 E000        40 	movem.l %d0-%d2,-(%sp)
+                        41 	
+                        42 	/* (1) */
+000518 46FC 2700        43 	move.w  #0x2700, %sr
+                        44 	/* (2) */
+00051c 0C41 0000        45 	cmpi #0, %d1
+000520 6600 0032        46 	bne	End_INTERPUT
+                        47 	/* (3) */
+000524 7001             48 	moveq	#1, %d0
+000526 4EBA 0104        49 	jsr	OUTQ
+                        50 	*出力１：d0(失敗 0/ 成功 1 )
+                        51 	*出力２：d1（取り出した8bitデータ）
+                        52 	/* (4) */
+00052a 0C40 0000        53 	cmpi #0, %d0
+00052e 6700 0010        54 	beq	INTERPUT_MASK
+                        55 	/* (5) */
+                        56 	/* d1をUTX1に代入（下位８bit） */
+000532 0041 0800        57 	ori #0x0800, %D1                | ヘッダを代入
+000536 33C1 00FF        58 	move.w %D1, UTX1                | 送信
+       F906             58 
+00053c 6000 0016        59 	bra	End_INTERPUT
+                        60 INTERPUT_MASK:
+                        61 	/* (4)' */
+                        62 	/* マスク操作 */
+000540 3439 00FF        63 	move.w	USTCNT1, %d2
+       F900             63 
+000546 0242 FFFB        64 	andi.w	#0xFFFB, %d2	/* 0xFFFB = 1111111111111011 */
+00054a 33C2 00FF        65 	move.w	%d2,	USTCNT1 /* 送信失敗した場合、USTCNT1のTXEEを0にする */
+       F900             65 
+000550 6000 0002        66 	bra End_INTERPUT
+                        67 End_INTERPUT:
+000554 4CDF 0007        68 	movem.l (%sp)+, %d0-%d2
+000558 4E75             69 	rts
+                        70 
+                        71 	
+                        72 ***************************************************************************************************
+                        73 
+                        74 *********PUTSTRING*********************************************************************************
+                        75 ** 入力１： チャネル ch → %D1.L
+                        76 ** 入力２：データ読み込み先の先頭アドレス p → %D2.L
+                        77 ** 入力３：送信するデータ数 size → %D3.L
+                        78 ** 出力  ：実際に送信したデータ数 sz → %D0.L
+                        79 	
+                        80 PUTSTRING:
+00055a 48E7 7E80        81 	movem.l %d1-%d6/%a0,-(%sp)
+                        82 	/* (1) */
+00055e 0C41 0000        83 	cmpi #0, %d1
+000562 6600 003E        84 	bne	End_PUTSTRING
+                        85 	/* (2) */
+000566 7800             86 	moveq	#0, %d4  /* d4 = sz = 0 */
+000568 2042             87 	movea.l	%d2, %a0 /* a0 = i = p */
+                        88 	/* (3) */
+00056a 0C43 0000        89 	cmpi #0, %d3
+00056e 6700 0030        90 	beq	PUTSTRING_10
+                        91 LOOP_PUTSTRING:	
+                        92 	/* (4) */
+000572 B843             93 	cmp	%d3, %d4
+000574 6700 001A        94 	beq	PUTSTRING_9
+                        95 	/* (5) */
+000578 7001             96 	moveq	#1, %d0
+00057a 1210             97 	move.b	(%a0), %d1
+00057c 4EBA 002A        98 	jsr	INQ
+                        99 	*d0 :キュー番号
+                       100 	*d1 :8bitデータ
+                       101 	*出力：d0(失敗 0/ 成功 1 )
+                       102 	/* (6) */
+000580 0C40 0000       103 	cmpi #0, %d0
+000584 6700 000A       104 	beq	PUTSTRING_9
+                       105 	/* (7) */
+000588 5244            106 	addq	#1, %d4
+00058a 5248            107 	addq	#1, %a0
+                       108 	/* (8) */
+00058c 6000 FFE4       109 	bra LOOP_PUTSTRING	
+                       110 PUTSTRING_9:
+                       111 	/* (9) */
+000590 3C39 00FF       112 	move.w	USTCNT1, %d6
+       F900            112 
+000596 0046 0004       113 	ori.w	#0x0004, %d6	/* 0xFFFB = 0000000000000100 */
+00059a 33C6 00FF       114 	move.w	%d6,	USTCNT1 /* 送信割込み許可 */
+       F900            114 
+                       115 PUTSTRING_10:
+                       116 	/* (10) */
+0005a0 2004            117 	move.l	%d4, %d0
+                       118 End_PUTSTRING:
+0005a2 4CDF 017E       119 	movem.l (%sp)+, %d1-%d6/%a0
+0005a6 4E75            120 	rts
+                       121 ***************************************************************************************************
+                       122 
+                       123 	
+                       124 **********INQ**********************************************************************
+                       125 *d0 :キュー番号
+                       126 *d1 :8bitデータ
+                       127 *出力：d0(失敗 0/ 成功 1 )
+                       128 INQ:
+                       129 	/* (1) */
+0005a8 40E7            130 	move.w %sr, -(%sp)
+0005aa 48E7 3FFE       131 	movem.l %d2-%d7/%a0-%a6,-(%sp) 
+                       132 
+                       133 	/* (2) */
+0005ae 46FC 2700       134 	move.w #0x2700,%sr
+                       135 
+                       136 	******************************************************************************************
+0005b2 43F9 0000       137 	lea.l	Q_INFO, %a1		/* a1: Q_INFOの開始地点 */
+       0000            137 
+0005b8 45F9 0000       138 	lea.l	Q0_START, %a2 		/* a2: Q0の先頭番地 */
+       0000            138 
+0005be 343C 0100       139 	move.w	#B_SIZE, %d2		/* d2: 256 */
+0005c2 363C 0014       140 	move.w	#Q_INFO_SIZE, %d3	/* d3: 20 (キュー１個分の情報量) */
+                       141 	
+0005c6 2800            142 	move.l	%d0,	%d4
+0005c8 C8C3            143 	mulu	%d3,	%d4		/* d4 = d0 * Q_INFO_SIZE */
+0005ca 2044            144 	move.l	%d4,	%a0
+0005cc D1C9            145 	add.l	%a1,	%a0		/* a0 = Q_INFO + d0 * Q_INFO_SIZE(各キュー情報の先頭) */
+                       146 	
+0005ce 2800            147 	move.l	%d0,	%d4			
+0005d0 C8C2            148 	mulu	%d2,	%d4		/* d4 = d0 * B_SIZE */
+0005d2 2644            149 	move.l	%d4,	%a3
+0005d4 D7CA            150 	add.l	%a2,	%a3		/* a3 = Q0_START + d0 * B_SIZE(各キューの先頭) */
+                       151 	******************************************************************************************
+                       152 
+                       153 	/* (3) */
+0005d6 2828 0010       154 	move.l	S_OFS(%a0), %d4
+0005da 0C84 0000       155 	cmpi.l	#256, %d4
+       0100            155 
+0005e0 6700 0006       156 	beq	INQ_Failure
+0005e4 6000 0008       157 	bra	INQ_Step1
+                       158 INQ_Failure:
+0005e8 7000            159 	moveq	#0, %d0
+0005ea 6000 0038       160 	bra	END_INQ
+                       161 INQ_Step1:
+                       162 	/* (4) */
+0005ee 2868 0008       163 	move.l	IN_OFS(%a0), %a4
+0005f2 1881            164 	move.b	%d1, (%a4)
+                       165 
+                       166 	/* (5) */
+0005f4 2868 0008       167 	movea.l	IN_OFS(%a0), %a4
+0005f8 2A68 000C       168 	movea.l	BOTTOM_OFS(%a0), %a5
+0005fc BBCC            169 	cmpa.l	%a4, %a5
+0005fe 6700 0010       170 	beq	BACK_IN
+000602 2868 0008       171 	movea.l	IN_OFS(%a0), %a4
+000606 524C            172 	addq	#1, %a4
+000608 214C 0008       173 	move.l	%a4, IN_OFS(%a0)
+00060c 6000 000A       174 	bra	INQ_Step2
+                       175 BACK_IN:
+000610 2868 0000       176 	movea.l	TOP_OFS(%a0), %a4
+000614 214C 0008       177 	move.l	%a4, IN_OFS(%a0)
+                       178 INQ_Step2:
+                       179 	/* (6) */
+000618 2828 0010       180 	move.l	S_OFS(%a0), %d4
+00061c 5284            181 	addq.l	#1, %d4
+00061e 2144 0010       182 	move.l	%d4, S_OFS(%a0)
+000622 7001            183 	moveq	#1, %d0
+                       184 	
+                       185 END_INQ:	
+                       186 	/* (7) */
+000624 4CDF 7FFC       187 	movem.l (%sp)+, %d2-%d7/%a0-%a6
+000628 46DF            188 	move.w (%sp)+, %sr
+00062a 4E75            189 	rts
+                       190 
+                       191 ***********************************************************************************
+                       192 
+                       193 
+                       194 **********OUTQ**********************************************************************
+                       195 *d0 :キュー番号
+                       196 *出力１：d0(失敗 0/ 成功 1 )
+                       197 *出力２：d1（取り出した8bitデータ）
+                       198 
+                       199 OUTQ:
+                       200 	/* (1) */
+00062c 40E7            201 	move.w %sr, -(%sp)
+00062e 48E7 3FFE       202 	movem.l %d2-%d7/%a0-%a6,-(%sp) 
+                       203 
+                       204 	/* (2) */
+000632 46FC 2700       205 	move.w #0x2700,%sr
+                       206 
+                       207 	******************************************************************************************
+000636 43F9 0000       208 	lea.l	Q_INFO, %a1		/* a1: Q_INFOの開始地点 */
+       0000            208 
+00063c 45F9 0000       209 	lea.l	Q0_START, %a2 		/* a2: Q0の先頭番地 */
+       0000            209 
+000642 343C 0100       210 	move.w	#B_SIZE, %d2		/* d2: 256 */
+000646 363C 0014       211 	move.w	#Q_INFO_SIZE, %d3	/* d3: 20 (キュー１個分の情報量) */
+                       212 	
+00064a 2800            213 	move.l	%d0,	%d4
+00064c C8C3            214 	mulu	%d3,	%d4		/* d4 = d0 * Q_INFO_SIZE */
+00064e 2044            215 	move.l	%d4,	%a0
+000650 D1C9            216 	add.l	%a1,	%a0		/* a0 = Q_INFO + d0 * Q_INFO_SIZE(各キュー情報の先頭) */
+                       217 	
+000652 2800            218 	move.l	%d0,	%d4			
+000654 C8C2            219 	mulu	%d2,	%d4		/* d4 = d0 * B_SIZE */
+000656 2644            220 	move.l	%d4,	%a3
+000658 D7CA            221 	add.l	%a2,	%a3		/* a3 = Q0_START + d0 * B_SIZE(各キューの先頭) */
+                       222 	******************************************************************************************
+                       223 
+                       224 	/* (3) */
+00065a 2828 0010       225 	move.l	S_OFS(%a0), %d4
+00065e 0C84 0000       226 	cmpi.l	#0, %d4
+       0000            226 
+000664 6700 0006       227 	beq	OUTQ_Failure
+000668 6000 0008       228 	bra	OUTQ_Step1
+                       229 OUTQ_Failure:
+00066c 7000            230 	moveq	#0, %d0
+00066e 6000 0038       231 	bra	END_OUTQ
+                       232 OUTQ_Step1:
+                       233 	/* (4) */
+000672 2868 0004       234 	move.l	OUT_OFS(%a0), %a4
+000676 1214            235 	move.b	(%a4), %d1
+                       236 
+                       237 	/* (5) */
+000678 2868 0004       238 	movea.l	OUT_OFS(%a0), %a4
+00067c 2A68 000C       239 	movea.l	BOTTOM_OFS(%a0), %a5
+000680 BBCC            240 	cmpa.l	%a4, %a5
+000682 6700 0010       241 	beq	BACK_OUT
+000686 2868 0004       242 	movea.l	OUT_OFS(%a0), %a4
+00068a 524C            243 	addq	#1, %a4
+00068c 214C 0004       244 	move.l	%a4, OUT_OFS(%a0)
+000690 6000 000A       245 	bra	OUTQ_Step2
+                       246 BACK_OUT:
+000694 2868 0000       247 	movea.l	TOP_OFS(%a0), %a4
+000698 214C 0004       248 	move.l	%a4, OUT_OFS(%a0)
+                       249 OUTQ_Step2:
+                       250 	/* (6) */
+00069c 2828 0010       251 	move.l	S_OFS(%a0), %d4
+0006a0 5384            252 	subq.l	#1, %d4
+0006a2 2144 0010       253 	move.l	%d4, S_OFS(%a0)
+0006a6 7001            254 	moveq	#1, %d0
+                       255 	
+                       256 END_OUTQ:	
+                       257 	/* (7) */
+0006a8 4CDF 7FFC       258 	movem.l (%sp)+, %d2-%d7/%a0-%a6
+0006ac 46DF            259 	move.w (%sp)+, %sr
+0006ae 4E75            260 	rts
+                       261 
+                       262 ***********************************************************************************
+                       263 
+                       264 
+                       265 	
+                       266 .section .data
+                       267 ******************************
+                       268 ** キュー用のメモリ領域確保と定数定義
+                       269 ******************************
+                       270 	.equ	B_SIZE, 	256
+                       271 	.equ	B_SIZE_MINUS,	255
+                       272 	.equ	Q_NUM,		2
+                       273 	
+                       274 	.equ	TOP_OFS,	0
+                       275 	.equ	OUT_OFS,	4
+                       276 	.equ	IN_OFS,		8
+                       277 	.equ	BOTTOM_OFS,	12
+                       278 	.equ	S_OFS,		16
+                       279 	.equ	Q_INFO_SIZE,	20
+                       280 
+                       281 	.even
+00080c 0000 0000       282 Q0_START: 	.ds.b	B_SIZE
+       0000 0000       282 
+       0000 0000       282 
+       0000 0000       282 
+       0000 0000       282 
+00090c 0000 0000       283 Q1_START: 	.ds.b	B_SIZE
+       0000 0000       283 
+       0000 0000       283 
+       0000 0000       283 
+       0000 0000       283 
+                       284 	.even
+                       285 Q_INFO:
+000a0c 0000 0000       286 	.ds.b	Q_INFO_SIZE * Q_NUM
+       0000 0000       286 
+       0000 0000       286 
+       0000 0000       286 
+       0000 0000       286 
+                       287 
+                       288 	
+                       289 ******************************
+                       290 ** 書き込むデータ（サンプル）
+                       291 ******************************
+000a34 6162 6364       292 Data_to_Que: 	.ascii	"abcdef"		/* 読み書きテスト用に1バイト確保 */
+       6566            292 
+                       293 
+000a3a 0000 0000       294 INQ_Result: .ds.l   300
+       0000 0000       294 
+       0000 0000       294 
+       0000 0000       294 
+       0000 0000       294 
+000eea 0000 0000       295 OUTQ_Data:  .ds.b   300
+       0000 0000       295 
+       0000 0000       295 
+       0000 0000       295 
+       0000 0000       295 
+001016 0000 0000       296 OUTQ_Result:.ds.l   300
+       0000 0000       296 
+       0000 0000       296 
+       0000 0000       296 
+       0000 0000       296 
+                        84 .include "interget.s"
+                        -4 .section .text
+                        -3 
+                        -2 ***************************
+                        -1 ** %d1.l = ch
+                         0 ** %d2.b = 受信データ  data
+                         1 ** 戻り値  なし
+                         2 ***************************
+                         3 INTERGET:
+0006b0 0C81 0000         4 	cmpi.l #0, %d1    /* ch != 0 なら終了 */                    
+       0000              4 
+0006b6 6600 000A         5 	bne INTERGET_END 
+0006ba 1202              6 	move.b %d2, %d1   /* %d1 = data */
+0006bc 7000              7 	moveq.l #0, %d0   /* キュー番号を 0 に設定 */          
+0006be 4EBA FEE8         8 	jsr INQ           /* INQ(0, data) */
+                         9 
+                        10 INTERGET_END:
+0006c2 4E75             11 	rts
+                        12 	
+                        13 **********************************************
+                        14 ** %d1.l = ch
+                        15 ** %d2.l = 書き込み先の先頭アドレス p
+                        16 ** %d3.l = 取り出すデータ数  size
+                        17 ** 戻り値  %d0.l = 実際に取り出したデータ数  sz 
+                        18 **********************************************
+                        19 GETSTRING:
+0006c4 48E7 0880        20 	movem.l %d4/%a0, -(%sp)
+0006c8 0C81 0000        21 	cmp.l #0, %d1            /* ch != 0 なら終了 */                  
+       0000             21 
+0006ce 6600 0026        22 	bne GETSTRING_END      
+0006d2 7800             23 	moveq.l #0, %d4          /* %d4 = 0 , %d4は%d0(=sz)の一時保存レジスタ */                
+0006d4 2042             24 	movea.l %d2, %a0         /* %a0 = p */       
+                        25 
+                        26 GETSTRING_STEP1:
+0006d6 B684             27 	cmp.l %d4, %d3           /* %d4 = size なら STEP2 へ */               
+0006d8 6700 001A        28 	beq GETSTRING_STEP2
+0006dc 7000             29 	moveq.l #0, %d0          /* %d0 = 0, キュー番号を0に */
+0006de 4EBA FF4C        30 	jsr OUTQ                 /* OUTQ(0,data) */      
+0006e2 0C80 0000        31 	cmpi.l #0, %d0           /* 復帰値 %d0 が 0 なら STEP2 へ */           
+       0000             31 
+0006e8 6700 000A        32 	beq GETSTRING_STEP2      
+0006ec 10C1             33 	move.b %d1, (%a0)+       /* %a0 番地へ data をコピー, %a0++ */                             
+0006ee 5284             34 	addq.l #1, %d4           /* %d4++ */      
+0006f0 6000 FFE4        35 	bra GETSTRING_STEP1      
+                        36 
+                        37 GETSTRING_STEP2:
+0006f4 2004             38 	move.l %d4, %d0          /* %d0 = %d4 */  
+                        39 
+                        40 GETSTRING_END:
+0006f6 4CDF 0110        41 	movem.l (%sp)+, %d4/%a0
+0006fa 4E75             42 	rts
+                        85 .include "timer.s"
+                        -4 .section .bss
+0054d0 0000 0000        -3 task_p:	.ds.b 4 /*タイマ割り込みで実行するプログラムの先頭アドレスを格納
+                        -2 
+                        -1 .section .text
+                         0 /*タイマルーチン*/
+                         1 RESET_TIMER:
+0006fc 33FC 0004         2 	move.w #0x0004, TCTL1
+       00FF F600         2 
+000704 4E75              3 	rts
+                         4 
+                         5 SET_TIMER:
+000706 23C2 0000         6 	move.l %D2, task_p
+       0000              6 
+00070c 33FC 00CE         7 	move.w #206, TPRER1 /*カウンタ周波数を10000にする-> 周期0.1msec*/
+       00FF F602         7 
+000714 33C1 00FF         8 	move.w %D1, TCMP1
+       F604              8 
+00071a 33FC 0015         9 	move.w #0x0015, TCTL1 /*比較割り込み許可, 1/16周期, タイマ許可*/
+       00FF F600         9 
+000722 4E75             10 	rts
+                        11 
+                        12 CALL_RP:
+000724 2079 0000        13 	movea.l task_p, %A0
+       0000             13 
+00072a 4E90             14 	jsr  (%A0)
+00072c 4E75             15 	rts
+                        86 
+                        87 uart1_interrupt:
+00072e 48E7 FFFE        88     movem.l %D0-%D7/%A0-%A6, -(%SP) | 使用するレジスタをスタックに保存
+000732 3039 00FF        89     move.w UTX1, %D0                | UTX1をD0レジスタにコピーし保存しておく
+       F906             89 
+000738 3200             90     move.w %D0, %D1                 | 計算用にD1レジスタにコピー
+00073a E049             91     lsr.w #8, %D1
+00073c EE49             92     lsr.w #7, %D1                   | 15回右シフト（上位ビットは0埋め）
+00073e 0C41 0001        93     cmpi.w #1, %D1                  | 0=FIFOが空ではない, 1=空である（割り込み発生
+000742 6600 0008        94     bne UART1_INTR_SKIP_PUT         | 送信割り込みでないならスキップ
+000746 7200             95     move.l #0, %D1                  | ch=%D1.L=0
+000748 4EBA FDCA        96     jsr INTERPUT
+                        97 UART1_INTR_SKIP_PUT:
+00074c 3639 00FF        98     move.w URX1, %D3                | 受信レジスタ URX1 を %D3.W にコピー
+       F904             98 
+000752 1403             99     move.b %D3, %D2                 | %D3.W の下位 8bit(データ部分) を %D2.B にコピー
+000754 E04B            100     lsr.w #8, %D3
+000756 EA4B            101     lsr.w #5, %D3                   | 13回右シフト（上位ビットは0埋め）
+000758 0243 0001       102     and.w #0x1, %D3                 | 0bit目以外を0に
+00075c 0C43 0001       103     cmpi.w #1, %D3                  | 0 = 受信 FIFO にデータがない．1 = データがあ�
+000760 6600 0008       104     bne UART1_INTR_SKIP_GET
+000764 4281            105     clr.l %D1                       | ch = %D1.L = 0, (data = %D2.Bは代入済)
+000766 4EBA FF48       106     jsr INTERGET
+                       107 UART1_INTR_SKIP_GET:
+00076a 4CDF 7FFF       108     movem.l (%SP)+, %D0-%D7/%A0-%A6 | レジスタを復帰
+00076e 4E73            109     rte
+                       110 
+                       111 tmr1_interrupt:
+000770 48E7 FFFE       112     movem.l %D0-%D7/%A0-%A6,-(%SP)  | 使用するレジスタをスタックに保存
+000774 3039 00FF       113     move.w TSTAT1, %D0              | %D0=TSTAT1
+       F60A            113 
+00077a 0240 0001       114     and.w #0x1, %D0                 | 0bit目以外を0に
+00077e 0C40 0000       115     cmp.w #0, %D0
+000782 6700 000C       116     beq TMR1_END                    | TSTAT1 の第 0 ビットが 1 となっているかどうか
+000786 4279 00FF       117     clr.w TSTAT1                    | TSTAT1 を 0 クリア
+       F60A            117 
+00078c 4EBA FF96       118     jsr CALL_RP
+                       119 TMR1_END:
+000790 4CDF 7FFF       120     movem.l (%SP)+, %D0-%D7/%A0-%A6 | レジスタを復帰
+000794 4E73            121     rte
+                       122 .include "main.s"
+                        -4 ****************************************************************
+                        -3 *** プログラム領域
+                        -2 ****************************************************************
+                        -1 .section .text
+                         0 .even
+                         1 MAIN:
+                         2     ** 走行モードとレベルの設定 (「ユーザモード」への移行処理)
+000796 46FC 0000         3     move.w #0x0000, %SR   | USER MODE, LEVEL 0
+00079a 4FF9 0000         4     lea.l USR_STK_TOP,%SP | user stack の設定
+       0000              4 
+                         5 
+                         6     ** システムコールによる RESET_TIMER の起動
+0007a0 7003              7     move.l #SYSCALL_NUM_RESET_TIMER, %D0
+0007a2 4E40              8     trap #0
+                         9 
+                        10     ** システムコールによる SET_TIMER の起動
+0007a4 7004             11     move.l #SYSCALL_NUM_SET_TIMER, %D0
+0007a6 323C C350        12     move.w #50000, %D1
+0007aa 243C 0000        13     move.l #TT, %D2
+       0000             13 
+0007b0 4E40             14     trap #0
+                        15 
+                        16 ******************************
+                        17 * sys_GETSTRING, sys_PUTSTRING のテスト
+                        18 * ターミナルの入力をエコーバックする
+                        19 ******************************
+                        20 LOOP:
+0007b2 7001             21     move.l #SYSCALL_NUM_GETSTRING, %D0
+0007b4 7200             22     move.l #0, %D1   | ch = 0
+0007b6 243C 0000        23     move.l #BUF, %D2 | p = #BUF
+       0000             23 
+0007bc 263C 0000        24     move.l #256, %D3 | size = 256
+       0100             24 
+0007c2 4E40             25     trap #0
+                        26 
+0007c4 2600             27     move.l %D0, %D3 | size = %D0 (length of given string)
+0007c6 7002             28     move.l #SYSCALL_NUM_PUTSTRING, %D0
+0007c8 7200             29     move.l #0, %D1  | ch = 0
+0007ca 243C 0000        30     move.l #BUF,%D2 | p = #BUF
+       0000             30 
+0007d0 4E40             31     trap #0
+0007d2 6000 FFDE        32     bra LOOP
+                        33 
+                        34 ******************************
+                        35 * タイマのテスト
+                        36 * ’******’ を表示し改行する．
+                        37 * ５回実行すると，RESET_TIMER をする．
+                        38 ******************************
+                        39 TT:
+0007d6 48E7 FFFE        40     movem.l %D0-%D7/%A0-%A6,-(%SP)
+0007da 0C79 0005        41     cmpi.w #5,TTC  | TTC カウンタで 5 回実行したかどうか数える
+       0000 0000        41 
+0007e2 6700 001C        42     beq TTKILL     | 5 回実行したら，タイマを止める
+0007e6 7002             43     move.l #SYSCALL_NUM_PUTSTRING,%D0
+0007e8 7200             44     move.l #0, %D1    | ch = 0
+0007ea 243C 0000        45     move.l #TMSG, %D2 | p = #TMSG
+       0000             45 
+0007f0 7608             46     move.l #8, %D3    | size = 8
+0007f2 4E40             47     trap #0
+                        48 
+0007f4 0679 0001        49     addi.w #1,TTC | TTC カウンタを 1 つ増やして
+       0000 0000        49 
+0007fc 6000 0006        50     bra TTEND     | そのまま戻る
+                        51 TTKILL:
+000800 7003             52     move.l #SYSCALL_NUM_RESET_TIMER,%D0
+000802 4E40             53     trap #0
+                        54 TTEND:
+000804 4CDF 7FFF        55     movem.l (%SP)+,%D0-%D7/%A0-%A6
+000808 4E75             56     rts
+                        57 
+                        58 ****************************************************************
+                        59 *** 初期値のあるデータ領域
+                        60 ****************************************************************
+                        61 .section .data
+                        62 TMSG:
+0014c6 2A2A 2A2A        63     .ascii "******\r\n"
+       2A2A 0D0A        63 
+                        64     .even
+                        65 TTC:
+0014ce 0000             66     .dc.w 0
+                        67     .even
+                        68 
+                        69 ****************************************************************
+                        70 *** 初期値の無いデータ領域
+                        71 ****************************************************************
+                        72 .section .bss
+                        73 BUF:
+0054d4 0000 0000        74 .ds.b 256 | BUF[256]
+       0000 0000        74 
+       0000 0000        74 
+       0000 0000        74 
+       0000 0000        74 
+                        75 .even
+                        76 USR_STK:
+0055d4 0000 0000        77 .ds.b 0x4000 | ユーザスタック領域
+       0000 0000        77 
+       0000 0000        77 
+       0000 0000        77 
+       0000 0000        77 
+                        78 .even
+                        79 USR_STK_TOP:     | ユーザスタック領域の最後尾
+                       123 .end
