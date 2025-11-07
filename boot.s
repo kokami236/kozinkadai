@@ -72,14 +72,13 @@ boot:
     move.w #0x2000, %SR   | スーパーバイザモード・走行レベルは0
     bra MAIN
 
-
-
 /* 割り込みハンドラ */
 .include "syscall.s"
 .include "queue.s"
 .include "interget.s"
 .include "timer.s"
 
+	
 uart1_interrupt:
     movem.l %D0-%D7/%A0-%A6, -(%SP) | 使用するレジスタをスタックに保存
     move.w UTX1, %D0                | UTX1をD0レジスタにコピーし保存しておく
@@ -113,7 +112,8 @@ tmr1_interrupt:
     clr.w TSTAT1                    | TSTAT1 を 0 クリア
     jsr CALL_RP
 TMR1_END:
-    movem.l (%SP)+, %D0-%D7/%A0-%A6 | レジスタを復帰
-    rte
-.include "main.s"
+	movem.l (%SP)+, %D0-%D7/%A0-%A6 | レジスタを復帰
+	rte
+	
+.include "typeren.s"
 .end
