@@ -1,41 +1,4 @@
-*********************
-** 表示する問題文字列
-*********************
-.section .data
-SIZE_EXAMPLE1: .dc.b 14 | Example1 の文字数
-SIZE_EXAMPLE2: .dc.b 13 | Example2 の文字数
-SIZE_EXAMPLE3: .dc.b 9 | Example3 の文字数
-SIZE_EXAMPLE4: .dc.b 17 | Example4 の文字数
-SIZE_EXAMPLE5: .dc.b 12 | Example5 の文字数
-.even
-EXAMPLE1: .ascii "denkikougakuka¥r¥n"
-.even
-EXAMPLE2: .ascii "mazideosoiyan¥r¥n"
-.even
-EXAMPLE3: .ascii "kanariiii¥r¥n"
-.even
-EXAMPLE4: .ascii "sakuraikyozyukami¥r¥n"
-.even
-EXAMPLE5: .ascii "sakuraikyouzy¥r¥n"
-.even
-EXC: .dc.w 0
-.even
-*********************
-** レベル選択領域
-*********************
-.section .data
-.even
-LEVEL: | 選択レベル
-.dc.b 0
-.ascii "¥r¥n"
-.even
-LEVEL_TIME: | 選択レベルに応じたタイマ割込み発生周期
-.dc.w 0
-.even
-LENGTH: | レベル選択文章の文字数
-.dc.b 45
-.even
-SELECT: .ascii "Please select a level of problem. (1, 2, 3)¥r¥n"
+
 **************
 *
 **************
@@ -90,26 +53,26 @@ MAIN_RETURN:
 ****************************************************************
 	*文字列
 ***************************************************************
-PREP_EXAM:
-	jsr BOOTQ　|問題ごとにキューをすべて初期化
-	jsr EXAMPLE_CALC |今から表示する問題分の長さを取得
-	lea.l SIZE_EXAMPLE1, %a1
+PREP_REI:
+	jsr Init_Q　|問題ごとにキューをすべて初期化
+	jsr REI_CALC |今から表示する問題分の長さを取得
+	lea.l SIZE_REI1, %a1
 	move.w EXC, %d0
 	subq.w #1, %d0
 	add.l %d0, %a1
 	moveq.l #0, %d2
 	move.b (%a1), %d2
 	move.l #Q_TOP2, Q_PTR_START　|文字列の先頭にポインタ設定
-	move.l #Q_TOP2, Q_PTR_FINISH |問題の文字列の最後の１バイトさきにポインタ設定
-	add.l %d2, Q_PTR_FINISH |
+	move.l #Q_TOP2, Q_PTR_FINISH  |問題の文字列の最後の１バイトさきにポインタ設定
+	add.l %d2, Q_PTR_FINISH
 INQ_LOOP:|問題文字列をキューに格納
 	moveq.l #2, %d0 |問題用キューの番号である２をデータレジスタd0に
 	move.b (%a0)+, %d1 |%a0が指す問題文字列から１バイと１文字を%d1に読み込みその後インクリメント
-	jsr INQ_TYPE
+	jsr INQ_USER
 	subq.b #0x1, %d2 |処理済みの文字数のカウント、カウンタ%d2の値を1減らす
 	bcc INQ_LOOP
 	/* 問題を画面に表示 */
-	lea.l SIZE_REIDAI1,%a1 | 今から表示する問題文字列の文字数を取得
+	lea.l SIZE_REI1,%a1 | 今から表示する問題文字列の文字数を取得
 	move.w EXC, %d0
 	subq.w #1, %d0
 	add.l %d0, %a1
@@ -213,7 +176,7 @@ STRING_COMPARE_TIMER_END:/*syscall_num_rreset_timerが３人になったら*/
 ******************************
 TT:
 	movem.l %D0-%D7/%A0-%A6, -(%SP) | レジスタ退避
-	lea.l SIZE_REIDAI1, %a0 | 今表示している問題の大きさを取得
+	lea.l SIZE_REI1, %a0 | 今表示している問題の大きさを取得
 	move.w (EXC), %d0
 	subq.w #1, %d0
 	add.l %d0, %a0
@@ -255,10 +218,10 @@ TT_FLG: | タイマの制限時間情報を格納するフラグ
 ****************************************************************
 .section .bss
 BUF: | 入力で得た文字の格納領域
-	.ds.b 256 | BUF[256]
+.ds.b 256 | BUF[256]
 .even
 BUF_CORRECT: | 一致した文字のみの格納領域
-	.ds.b 256 | BUF_CORRNCT[256]
+.ds.b 256 | BUF_CORRNCT[256]
 .even
 ************************
 ** プログラム領域ここまで
@@ -295,8 +258,8 @@ INQ_USER_STEP3:
 	bcc INQ_USER_STEP4 /* Q_IN =< Q_BOTTOMなら分岐 */
 	movea.l %a1,%a3 /* a3 = Q_TOP */
 INQ_USER_STEP4:
-	move.l %a3,256(%a1) /* Q_IN = a3 */
-	addq.l #1,264(%a1) /* Q_S = Q_S + 1 */
+	move.l %a3, 256(%a1) /* Q_IN = a3 */
+	addq.l #1, 264(%a1) /* Q_S = Q_S + 1 */
 	moveq.l #1, %d0 /* d0 = 1 で終了 */
 INQ_USER_Finish:
 	movem.l (%sp)+, %d3/%a1-%a3
@@ -309,77 +272,60 @@ INQ_USER_Finish:
 /* 受信キュー */
 .section .bss
 .even
-Q_TOP0:
-	.ds.b B_SIZE-1 /* キューデータ領域の先頭番地 */
-Q_BOTTOM0:
-	.ds.b 1 /* キューデータ領域の末尾番地 */
-Q_IN0:
-	.ds.l 1 /* 書き込みポインタ */
-Q_OUT0:
-	.ds.l 1 /* 読み出しポインタ */
-Q_S0:
-	.ds.l 1 /* キューが保持するデータ数 */
+Q_TOP0: .ds.b B_SIZE-1 /* キューデータ領域の先頭番地 */
+Q_BOTTOM0: .ds.b 1 /* キューデータ領域の末尾番地 */
+Q_IN0: .ds.l 1 /* 書き込みポインタ */
+Q_OUT0: .ds.l 1 /* 読み出しポインタ */
+Q_S0: .ds.l 1 /* キューが保持するデータ数 */
 /* 送信キュー */
 .section .bss
 .even
-Q_TOP1:
-	.ds.b B_SIZE-1 /* キューデータ領域の先頭番地 */
-Q_BOTTOM1:
-	.ds.b 1 /* キューデータ領域の末尾番地 */
-Q_IN1:
-	.ds.l 1 /* 書き込みポインタ */
-Q_OUT1:
-	.ds.l 1 /* 読み出しポインタ */
-Q_S1:
-	.ds.l 1 /* キューが保持するデータ数 */
+Q_TOP1: .ds.b B_SIZE-1 /* キューデータ領域の先頭番地 */
+Q_BOTTOM1: .ds.b 1 /* キューデータ領域の末尾番地 */
+Q_IN1: .ds.l 1 /* 書き込みポインタ */
+Q_OUT1: .ds.l 1 /* 読み出しポインタ */
+Q_S1: .ds.l 1 /* キューが保持するデータ数 */
 /* 問題の文字列用キュー */
 .section .bss
 .even
-Q_TOP2:
-	.ds.b B_SIZE-1 /* キューデータ領域の先頭番地 */
-Q_BOTTOM2:
-	.ds.b 1 /* キューデータ領域の末尾番地 */
-Q_IN2:
-	.ds.l 1 /* 書き込みポインタ */
-Q_OUT2:
-	.ds.l 1 /* 読み出しポインタ */
-Q_S2:
-	.ds.l 1 /* キューが保持するデータ数 */
-Q_PTR_START:
-	.ds.l 1 /* 未比較文字の先頭ポインタ */
-Q_PTR_FINISH:
-	.ds.l 1 /* 未比較文字の最後ポインタ */
+Q_TOP2: .ds.b B_SIZE-1 /* キューデータ領域の先頭番地 */
+Q_BOTTOM2: .ds.b 1 /* キューデータ領域の末尾番地 */
+Q_IN2: .ds.l 1 /* 書き込みポインタ */
+Q_OUT2:	.ds.l 1 /* 読み出しポインタ */
+Q_S2: .ds.l 1 /* キューが保持するデータ数 */
+Q_PTR_START:	.ds.l 1 /* 未比較文字の先頭ポインタ */
+Q_PTR_FINISH:	.ds.l 1 /* 未比較文字の最後ポインタ */
 ****************************************
 ** EXAMPLE_CALCULATE 表示する問題の先頭アドレスを計算する
 ****************************************
 .section .text
 .even
-EXAMPLE_CALCULATE:
+REI_CALC:
 	movem.l %D0-%D7/%A1-%A6,-(%SP) | レジスタ退避
-	lea.l EXAMPLE1,%a0
+	lea.l REI1,%a0
 	cmpi.w #1, (EXC) | 問題 1（Example1）のとき
-	beq EXAMPLE_CALCULATE_END
+	beq REI_CALC_END
 	cmpi.w #2, (EXC) | 問題 2（Example2）のとき
-	beq EXAMPLE_CALCULATE_EXAMPLE2
+	beq REI_CALC_REI2
 	cmpi.w #3, (EXC) | 問題 3（Example3）のとき
-	beq EXAMPLE_CALCULATE_EXAMPLE3
+	beq REI_CALC_REI3
 	cmpi.w #4, (EXC) | 問題 4（Example4）のとき
-	beq EXAMPLE_CALCULATE_EXAMPLE4
+	beq REI_CALC_REI4
 	cmpi.w #5, (EXC) | 問題 5（Example5）のとき
-	beq EXAMPLE_CALCULATE_EXAMPLE5
-EXAMPLE_CALCULATE_EXAMPLE2: | 問題 2
+	beq REI_CALC_REI5
+REI_CALC_REI2: | 問題 2
 	add.l #16, %a0
-	bra EXAMPLE_CALCULATE_END
-EXAMPLE_CALCULATE_EXAMPLE3: | 問題 3
+	bra REI_CALC_END
+REI_CALC_REI3: | 問題 3
 	add.l #32, %a0
-	bra EXAMPLE_CALCULATE_END
-EXAMPLE_CALCULATE_EXAMPLE4: | 問題 4
+	bra REI_CALC_END
+REI_CALC_REI4: | 問題 4
 	add.l #44, %a0
-	bra EXAMPLE_CALCULATE_END
-EXAMPLE_CALCULATE_EXAMPLE5: | 問題 5
+	bra REI_CALC_END
+REI_CALC_REI5: | 問題 5
 	add.l #64, %a0
-	bra EXAMPLE_CALCULATE_END
-EXAMPLE_CALCULATE_END:
+	bra REI_CALC_END
+REI_CALC_END:
 	movem.l (%SP)+,%D0-%D7/%A1-%A6 | レジスタ回復
 	rts
 ****************************************
@@ -410,3 +356,41 @@ LEVEL_TIMER_END:
 	rts
 
 
+*********************
+** 表示する問題文字列
+*********************
+.section .data
+SIZE_REI1: .dc.b 14 | Example1 の文字数
+SIZE_REI2: .dc.b 13 | Example2 の文字数
+SIZE_REI3: .dc.b 9 | Example3 の文字数
+SIZE_REI4: .dc.b 17 | Example4 の文字数
+SIZE_REI5: .dc.b 12 | Example5 の文字数
+.even
+REI1: .ascii "denkikougakuka¥r¥n"
+.even
+REI2: .ascii "mazideosoiyan¥r¥n"
+.even
+REI3: .ascii "kanariiii¥r¥n"
+.even
+REI4: .ascii "sakuraikyozyukami¥r¥n"
+.even
+REI5: .ascii "sakuraikyouzy¥r¥n"
+.even
+EXC: .dc.w 0
+.even
+*********************
+** レベル選択領域
+*********************
+.section .data
+.even
+LEVEL: | 選択レベル
+.dc.b 0
+.ascii "¥r¥n"
+.even
+LEVEL_TIME: | 選択レベルに応じたタイマ割込み発生周期
+.dc.w 0
+.even
+LENGTH: | レベル選択文章の文字数
+.dc.b 45
+.even
+SELECT: .ascii "Please select a level of problem. (1, 2, 3)¥r¥n"

@@ -12,19 +12,19 @@ Linker script and memory map
 LOAD boot.o
                 [!provide]                        PROVIDE (__stack = 0x3fff0)
 
-.text           0x0000000000000400      0x6c6
+.text           0x0000000000000400      0x6c2
  *(.text)
- .text          0x0000000000000400      0x6c6 boot.o
+ .text          0x0000000000000400      0x6c2 boot.o
 
-.data           0x0000000000000ac8      0xd6c
-                0x0000000000000ac8                . = ALIGN (0x4)
+.data           0x0000000000000ac4      0xd6b
+                0x0000000000000ac4                . = ALIGN (0x4)
  *(.data)
- .data          0x0000000000000ac8      0xd6c boot.o
+ .data          0x0000000000000ac4      0xd6b boot.o
 
-.bss            0x0000000000001834     0x4532
-                0x0000000000001834                . = ALIGN (0x4)
+.bss            0x0000000000001830     0x4532
+                0x0000000000001830                . = ALIGN (0x4)
  *(.bss)
- .bss           0x0000000000001834     0x4532 boot.o
+ .bss           0x0000000000001830     0x4532 boot.o
 
 .stab
  *(.stab)
@@ -32,15 +32,12 @@ LOAD boot.o
 .stabstr
  *(.stabstr)
 Address of section .text set to 0x400
-OUTPUT(boot.abs.tmp215156 srec)
+OUTPUT(boot.abs.tmp373340 srec)
 
 Cross Reference Table
 
 Symbol                                            File
-BOOTQ　                                          boot.o
-EXAMPLE_CALC                                      boot.o
-INQ_TYPE                                          boot.o
+Init_Q　                                         boot.o
 Q_PTR_START　                                    boot.o
-SIZE_REIDAI1                                      boot.o
 STRING_COMPARISON_SEND                            boot.o
 USER_STK_TOP                                      boot.o
