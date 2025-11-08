@@ -1,0 +1,18 @@
+    /* ここをtyperen.sのいちばん上に足す */
+
+    .section .bss
+    .even
+USER_STK:       .ds.b 0x2000     | ユーザ用スタック 2KBくらい
+    .even
+USER_STK_TOP:
+
+    .even
+Q_PTR_START:    .ds.l 1          | 問題文字列の“今ここ”ポインタ
+Q_PTR_FINISH:   .ds.l 1          | 問題文字列の終端ポインタ
+
+    /* ここから元のtyperen.sの .text を書く */
+    .section .text
+    .even
+MAIN:
+    ori.w #0x0008, USTCNT1
+    ...
