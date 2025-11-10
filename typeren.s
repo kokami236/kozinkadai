@@ -1,7 +1,41 @@
-
+/* ここをtyperen.sのいちばん上に足す */
+.section .bss
+.even
+USER_STK:       .ds.b 0x2000     | ユーザ用スタック 2KBくらい
+.even
+USER_STK_TOP:
+.section .bss
+.even
+Q_PTR_START:	.ds.l 1 | 問題文字列の“今ここ”ポインタ
+Q_PTR_FINISH:	.ds.l 1 | 問題文字列の終端ポインタ
+/* 受信キュー */
+.section .bss
+.even
+Q_TOP0: .ds.b B_SIZE-1 /* キューデータ領域の先頭番地 */
+Q_BOTTOM0: .ds.b 1 /* キューデータ領域の末尾番地 */
+Q_IN0: .ds.l 1 /* 書き込みポインタ */
+Q_OUT0: .ds.l 1 /* 読み出しポインタ */
+Q_S0: .ds.l 1 /* キューが保持するデータ数 */
+/* 送信キュー */
+.section .bss
+.even
+Q_TOP1: .ds.b B_SIZE-1 /* キューデータ領域の先頭番地 */
+Q_BOTTOM1: .ds.b 1 /* キューデータ領域の末尾番地 */
+Q_IN1: .ds.l 1 /* 書き込みポインタ */
+Q_OUT1: .ds.l 1 /* 読み出しポインタ */
+Q_S1: .ds.l 1 /* キューが保持するデータ数 */
+/* 問題の文字列用キュー */
+.section .bss
+.even
+Q_TOP2: .ds.b B_SIZE-1 /* キューデータ領域の先頭番地 */
+Q_BOTTOM2: .ds.b 1 /* キューデータ領域の末尾番地 */
+Q_IN2: .ds.l 1 /* 書き込みポインタ */
+Q_OUT2:	.ds.l 1 /* 読み出しポインタ */
+Q_S2: .ds.l 1 /* キューが保持するデータ数 */
 **************
 *
 **************
+.extern Init_Q
 .section .text
 .even
 MAIN:
@@ -54,7 +88,7 @@ MAIN_RETURN:
 	*文字列
 ***************************************************************
 PREP_REI:
-	jsr Init_Q　|問題ごとにキューをすべて初期化
+	jsr Init_Q
 	jsr REI_CALC |今から表示する問題分の長さを取得
 	lea.l SIZE_REI1, %a1
 	move.w EXC, %d0
@@ -62,8 +96,8 @@ PREP_REI:
 	add.l %d0, %a1
 	moveq.l #0, %d2
 	move.b (%a1), %d2
-	move.l #Q_TOP2, Q_PTR_START　|文字列の先頭にポインタ設定
-	move.l #Q_TOP2, Q_PTR_FINISH  |問題の文字列の最後の１バイトさきにポインタ設定
+	move.l #Q_TOP2, Q_PTR_START
+	move.l #Q_TOP2, Q_PTR_FINISH  
 	add.l %d2, Q_PTR_FINISH
 INQ_LOOP:|問題文字列をキューに格納
 	moveq.l #2, %d0 |問題用キューの番号である２をデータレジスタd0に
@@ -269,32 +303,7 @@ INQ_USER_Finish:
 ******************************
 .equ B_SIZE, 256 /* キューのデータ領域サイズ */
 .equ Q_SIZE, B_SIZE+12 /* キューの全体サイズ */
-/* 受信キュー */
-.section .bss
-.even
-Q_TOP0: .ds.b B_SIZE-1 /* キューデータ領域の先頭番地 */
-Q_BOTTOM0: .ds.b 1 /* キューデータ領域の末尾番地 */
-Q_IN0: .ds.l 1 /* 書き込みポインタ */
-Q_OUT0: .ds.l 1 /* 読み出しポインタ */
-Q_S0: .ds.l 1 /* キューが保持するデータ数 */
-/* 送信キュー */
-.section .bss
-.even
-Q_TOP1: .ds.b B_SIZE-1 /* キューデータ領域の先頭番地 */
-Q_BOTTOM1: .ds.b 1 /* キューデータ領域の末尾番地 */
-Q_IN1: .ds.l 1 /* 書き込みポインタ */
-Q_OUT1: .ds.l 1 /* 読み出しポインタ */
-Q_S1: .ds.l 1 /* キューが保持するデータ数 */
-/* 問題の文字列用キュー */
-.section .bss
-.even
-Q_TOP2: .ds.b B_SIZE-1 /* キューデータ領域の先頭番地 */
-Q_BOTTOM2: .ds.b 1 /* キューデータ領域の末尾番地 */
-Q_IN2: .ds.l 1 /* 書き込みポインタ */
-Q_OUT2:	.ds.l 1 /* 読み出しポインタ */
-Q_S2: .ds.l 1 /* キューが保持するデータ数 */
-Q_PTR_START:	.ds.l 1 /* 未比較文字の先頭ポインタ */
-Q_PTR_FINISH:	.ds.l 1 /* 未比較文字の最後ポインタ */
+
 ****************************************
 ** EXAMPLE_CALCULATE 表示する問題の先頭アドレスを計算する
 ****************************************
