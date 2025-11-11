@@ -31,55 +31,55 @@
 .equ LED1, IOBASE+0x000003b
 .equ LED0, IOBASE+0x0000039
 
-/* スタック */
+	/* スタック */
 .section .bss
 .even
-SYS_STK:.ds.b 0x4000
+SYS_STK:	.ds.b   0x4000  |システムスタック領域
 .even
-SYS_STK_TOP: | システムスタック領域の最後尾
+SYS_STK_TOP:            |システムスタック領域の最後尾
 
 /* 初期化 */
 .section .text
 .even
 boot:
-    move.w #0x2700, %SR     | 割り込み禁止
-    lea.l SYS_STK_TOP, %SP  | スタックポインタの設定
+	* スーパーバイザ&各種設定を行っている最中の割込禁止
+	move.w #0x2700,%SR
+	lea.l  SYS_STK_TOP, %SP | Set SSP
+****************
+**割り込みコントローラの初期化
+	****************
+	move.b #0x40, IVR       |ユーザ割り込みベクタ番号を| 0x40+levelに設定．
+	move.l #0x00ffffff,IMR  |全割り込みマスク /* STEP2.3 */
 
-    /* 割り込みコントローラの初期化 */
-    move.b #0x40, IVR       | ユーザ割り込みベクタ番号を0x40+levelに設定
-    move.l #0x00ffffff, IMR | 全割り込みマスク
+****************
+** 送受信(UART1)関係の初期化(割り込みレベルは4に固定されている)
+	****************
+	move.w #0x0000, USTCNT1 |リセット
+	move.w #0xe100, USTCNT1 |送受信可能,パリティなし, 1 stop, 8 bit,|送受割り込み禁止
+	move.w #0x0038, UBAUD1  |baud rate = 230400 bps
 
-    move.l #syscall_handler, 0x080 | TRAP#0の割り込みベクタを登録
-    move.l #uart1_interrupt, 0x110 | UART1の割り込みベクタを登録
-    move.l #tmr1_interrupt, 0x118  | TIMER1の割り込みベクタを登録
+****************
+** タイマ関係の初期化(割り込みレベルは6に固定されている)
+*****************
+	move.w #0x0004, TCTL1   | restart,割り込み不可,|システムクロックの1/16を単位として計時，|タイマ使用停止
 
-    /* 送受信 (UART1) 関係の初期化 (割り込みレベルは 4 に固定されている) */
-    move.w #0x0000, USTCNT1 | リセット
-    * move.w #0xe100, USTCNT1 | 送受信可能, パリティなし, 1 stop, 8 bit, 送受割り込み禁止
-    move.w #0xe108, USTCNT1 | 受信割り込み可能
-    * move.w #0xe104, USTCNT1   | 送信割り込み可能
-    move.w #0x0038, UBAUD1  | baud rate = 230400 bps
-
-    /* タイマ関係の初期化 (割り込みレベルは 6 に固定されている) */
-    move.w #0x0004, TCTL1   | restart, 割り込み不可,
-                            | システムクロックの 1/16 を単位として計時，
-                            | タイマ使用停止
-
-    jsr	Init_Q            | キューの初期化
-
-    * move.l #0xff3ffb, IMR | UART1の割り込みを許可
-    move.l #0xff3ff9, IMR | UART1,TIMERの割り込みを許可
-    move.w #0x2000, %SR   | スーパーバイザモード・走行レベルは0
-    bra MAIN
+***************************************************************
+** STEP2の処理
+***************************************************************
+		/* 初期化処理をメインルーチンからこちらへ移動 */
+		*lea.l uart1_interrupt, %a0
+		*move.l %a0, 0x110 /* STEP2.1 level 4, (64+4)*4 割り込み処理ルーチンの開始アドレスをレベル4割り込みベクタに設定 */
+	move.l #uart1_interrupt, 0x110
+	move.w #0xe100, USTCNT1 |送受信割り込みマスク
+	move.l #0x00ff3ffb,IMR  |UART1許可
+	move.w #0x2700, %SR    /* 走行レベル7 */
+	bra MAIN	
 
 /* 割り込みハンドラ */
-.include "syscall.s"
-.include "queue.s"
-.include "interget.s"
-.include "timer.s"
+
 
 	
-uart1_interrupt:
+/*uart1_interrupt:
     movem.l %D0-%D7/%A0-%A6, -(%SP) | 使用するレジスタをスタックに保存
     move.w UTX1, %D0                | UTX1をD0レジスタにコピーし保存しておく
     move.w %D0, %D1                 | 計算用にD1レジスタにコピー
@@ -89,6 +89,23 @@ uart1_interrupt:
     bne UART1_INTR_SKIP_PUT         | 送信割り込みでないならスキップ
     move.l #0, %D1                  | ch=%D1.L=0
     jsr INTERPUT
+	*/
+.section .text
+.even
+uart1_interrupt:
+	move.b #'3', LED5
+	movem.l %d0, -(%sp)
+	*move.b #'a', %d0 /* URX1の下位8ビットのデータを転送 */
+	*addi.w #0x0800, %d0 /* 即値をレジスタd0に加算 */
+	*move.w %d0, UTX1 /* 16ビットのデータをUTX1に転送 */
+	move.w UTX1, %d0	/*step4:UTX1のコピー*/
+	move.b #0, %d1	/*chの選択*/
+	cmp #0x8000,%d0
+	bcs uart1_END
+	jsr INTERPUT
+uart1_END:	
+	movem.l (%sp)+, %d0
+	rte
 UART1_INTR_SKIP_PUT:
     move.w URX1, %D3                | 受信レジスタ URX1 を %D3.W にコピー
     move.b %D3, %D2                 | %D3.W の下位 8bit(データ部分) を %D2.B にコピー
@@ -114,6 +131,9 @@ tmr1_interrupt:
 TMR1_END:
 	movem.l (%SP)+, %D0-%D7/%A0-%A6 | レジスタを復帰
 	rte
-	
-.include "typeren.s"
+.include "syscall.s"
+.include "queue.s"
+.include "interget.s"
+.include "timer.s"
+.include "typeren2.s"
 .end
