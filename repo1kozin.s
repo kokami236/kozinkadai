@@ -264,7 +264,7 @@ FINISH:
 	move.l 	#SYSCALL_NUM_PUTSTRING, %D0
 	move.l 	#0, %d1	 		|ch
 	move.l 	#MS1, %d2	   		|p
-	trap 	#0				|MS1"\n\n\r-----Finish!-----\n\rcorrect: "の表示|
+	trap 	#0				|MS1"\n\n\r-----OTTUKARE-----\n\rcorrect: "の表示|
 
 	lea.l	score, %a6
 	jsr	DISPLAY_D_ASKII			|scoreの表示|
@@ -282,7 +282,7 @@ FINISH:
 	move.l 	#SYSCALL_NUM_PUTSTRING, %D0
 	move.l 	#0, %d1	 		|ch
 	move.l 	#MS3, %d2	   		|p
-	trap 	#0				|MS3"\n\rcorrect types: "の表示|
+	trap 	#0				|MS3"\n\rcorrect: "の表示|
 
 	lea.l	correct, %a6
 	jsr	DISPLAY_D_ASKII			|correctの表示|
@@ -291,7 +291,7 @@ FINISH:
 	move.l 	#SYSCALL_NUM_PUTSTRING, %D0
 	move.l 	#0, %d1	 		|ch
 	move.l 	#MS4, %d2	   		|p
-	trap 	#0				|MS4"\n\rmiss types: "の表示|
+	trap 	#0				|MS4"\n\rmiss: "の表示|
 
 	lea.l	miss, %a6
 	jsr	DISPLAY_D_ASKII			|missの表示|
@@ -342,7 +342,7 @@ FINISH:
 	move.l 	#SYSCALL_NUM_PUTSTRING, %D0
 	move.l 	#0, %d1	 		|ch
 	move.l 	#MS7, %d2	   		|p
-	trap 	#0				|MS7"\n\rtotal time(0.1s): "の表示|
+	trap 	#0				|MS7"\n\rtotal time(0.1second): "の表示|
 
 	move.l	#all_time, %a6
 	jsr	DISPLAY_D_ASKII
