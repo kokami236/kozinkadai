@@ -82,30 +82,18 @@ boot:
 	**スーパーバイザ&各種設定のときの割込禁止
 	move.w #0x2700,%SR
 	lea.l  SYS_STK_TOP, %SP | Set SSP
-
- ****************
  **割り込みコントローラの初期化
- ****************
 	move.b #0x40, IVR       |ユーザ割り込みベクタ番号を0x40+levelに設定|
 	move.l #0x00ffffff, IMR |全割り込みマスク|
-
- ****************
  **送受信(UART1)関係の初期化(割り込みレベルは4に固定されている)
- ****************
 	move.w #0x0000, USTCNT1 |リセット
 	move.w #0xE10C, USTCNT1 |送受信可能,パリティなし, 1 stop, 8 bit,送受信割り込み禁止|
 	move.w #0x0038, UBAUD1  | baud rate = 230400 bps
-
- ****************
  **割り込み処理ルーチンの初期化
- *****************
 	move.l #interrupt, 0x110 /* level 4, (64+4)*4 */
 	move.l #compare_interrupt, 0x118 /* level 6, (64+6)*4 */
 	move.l #SYSTEM_CALL, 0x080
-
- ****************
- **タイマ関係の初期化(割り込みレベルは6に固定されている)
- *****************
+ **タイマ関係の初期化(割り込みレベルは6に固定)
 	move.w #0x0004, TCTL1   | restart,割り込み不可,システムクロックの1/16が単位，タイマ使用停止|
 
  ****************
@@ -168,7 +156,7 @@ LOOP1:	|問題表示|
 
 
 	move.b	(%a1), %d1
-	mulu	#5000, %d1			|制限時間は文字数の0.5倍秒
+	mulu	#5000, %d1			|制限時間は文字数の0.5倍秒|
 
 	move.l 	#SYSCALL_NUM_SET_TIMER, %D0
 	move.l 	#TT, %D2			|p
@@ -177,7 +165,7 @@ LOOP0:
 	move.b	#'8', LED0
 	move.b	#'1', LED0
 	move.w	timeover_flg, %d0
-	cmpi.w	#0xffff, %d0			|timeoverがあったかどうかの確認
+	cmpi.w	#0xffff, %d0			|timeoverがあったかどうかの確認|
 	beq	TIMEOVER			|時間切れ|
 
 	move.l	#SYSCALL_NUM_GETSTRING, %d0
@@ -214,8 +202,8 @@ LOOP0:
 
 	bra 	LOOP0				|入力途中, 戻る|
 
-CLEAR:		|1問クリア|
-	addi.w	#1, score			|score++|
+CLEAR:		|1問クリア処理|
+	addi.w	#1, score  |クリア問題数をカウントアップ|
 
 	move.l 	#SYSCALL_NUM_READ_TIMER, %d0
 	trap	#0				|タイマ読み|
@@ -264,7 +252,7 @@ FINISH:
 	move.l 	#SYSCALL_NUM_PUTSTRING, %D0
 	move.l 	#0, %d1	 		|ch
 	move.l 	#MS1, %d2	   		|p
-	trap 	#0				|MS1"\n\n\r-----OTTUKARE-----\n\rcorrect: "の表示|
+	trap 	#0				|MS1"\n\n\r-----Finish!-----\n\rcorrect: "の表示|
 
 	lea.l	score, %a6
 	jsr	DISPLAY_D_ASKII			|scoreの表示|
@@ -282,7 +270,7 @@ FINISH:
 	move.l 	#SYSCALL_NUM_PUTSTRING, %D0
 	move.l 	#0, %d1	 		|ch
 	move.l 	#MS3, %d2	   		|p
-	trap 	#0				|MS3"\n\rcorrect: "の表示|
+	trap 	#0				|MS3"\n\rcorrect types: "の表示|
 
 	lea.l	correct, %a6
 	jsr	DISPLAY_D_ASKII			|correctの表示|
@@ -291,7 +279,7 @@ FINISH:
 	move.l 	#SYSCALL_NUM_PUTSTRING, %D0
 	move.l 	#0, %d1	 		|ch
 	move.l 	#MS4, %d2	   		|p
-	trap 	#0				|MS4"\n\rmiss: "の表示|
+	trap 	#0				|MS4"\n\rmiss types: "の表示|
 
 	lea.l	miss, %a6
 	jsr	DISPLAY_D_ASKII			|missの表示|
@@ -302,7 +290,7 @@ FINISH:
 	move.l 	#MS5, %d2	   		|p
 	trap 	#0				|MS5"\n\rtypes per sec: "の表示|
 	
-	**打/秒の計算に関する
+	**打/秒の計算
 	move.w	correct, %d0		        |correctは正解打数|
 	mulu	#10, %d0			|割る数が0.1sec単位なので正解打数を10倍|
 	move.w	all_time, %d1			|all_timeまでに過ぎた時間|
@@ -342,7 +330,7 @@ FINISH:
 	move.l 	#SYSCALL_NUM_PUTSTRING, %D0
 	move.l 	#0, %d1	 		|ch
 	move.l 	#MS7, %d2	   		|p
-	trap 	#0				|MS7"\n\rtotal time(0.1second): "の表示|
+	trap 	#0				|MS7"\n\rtotal time(0.1s): "の表示|
 
 	move.l	#all_time, %a6
 	jsr	DISPLAY_D_ASKII
