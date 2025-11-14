@@ -288,7 +288,7 @@ FINISH:
 	move.l 	#SYSCALL_NUM_PUTSTRING, %D0
 	move.l 	#0, %d1	 		|ch
 	move.l 	#MS3, %d2	   		|p
-	trap 	#0				|MS3"\n\rcorrect types: "の表示|
+	trap 	#0				|MS3"\n\rcorrect: "の表示|
 
 	lea.l	correct, %a6
 	jsr	DISPLAY_D_ASKII			|correctの表示|
@@ -297,7 +297,7 @@ FINISH:
 	move.l 	#SYSCALL_NUM_PUTSTRING, %D0
 	move.l 	#0, %d1	 		|ch
 	move.l 	#MS4, %d2	   		|p
-	trap 	#0				|MS4"\n\rmiss types: "の表示|
+	trap 	#0				|MS4"\n\rmiss: "の表示|
 
 	lea.l	miss, %a6
 	jsr	DISPLAY_D_ASKII			|missの表示|
