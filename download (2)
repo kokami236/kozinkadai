@@ -1,0 +1,60 @@
+・inchrw.s
+.include "module.inc"
+.global inbyte
+.global inkey
+.section .text
+inbyte:
+movem.l %d0-%d3/%a0, -(%sp)
+movea.l %sp, %a0
+add.l #24, %a0
+inbyte_loop:
+move.l #SYSCALL_NUM_GETSTRING, %d0
+move.l (%a0), %d1
+move.l #BUF, %d2
+move.l #1, %d3
+trap #0
+cmpi.l #0, %d0
+beq inbyte_loop
+movem.l (%sp)+, %d0-%d3/%a0
+move.b BUF, %d0
+rts
+inkey:
+movem.l %d0-%d3/%a0, -(%sp)
+movea.l %sp, %a0
+add.l #24, %a0
+move.l #SYSCALL_NUM_GETSTRING, %d0
+move.l (%a0), %d1
+move.l #BUF, %d2
+move.l #1, %d3
+trap #0
+cmpi.l #0, %d0
+beq miss
+movem.l (%sp)+, %d0-%d3/%a0
+move.b BUF, %d0
+rts
+miss
+movem.l (%sp)+, %d0-%d3/%a0
+move.l 0xffffffff, %d0
+rts
+.section .bss
+BUF: ds.b 1
+・outchr.s
+.include "module.inc"
+.global outbyte
+.text
+outbyte:
+movem.l %d0-%d3/%a0, -(%sp)
+movea.l %sp, %a0
+add.l #27, %a0
+move.l %a0, %d2
+add.l #1, %a0
+outbyte_loop:
+move.l #SYSCALL_NUM_PUTSTRING, %d0
+move.l (%a0), %d1
+move.l #1, %d3 /*1 文字出力*/
+trap #0
+cmpi.l #0x0, %d0
+beq outbyte_loop
+movem.l (%sp)+, %d0-%d3/%a0
+rts
+・test3.c
