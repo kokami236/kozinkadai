@@ -1,0 +1,463 @@
+・mtk_c.h
+#define UNDEFINED 0
+#define USE 1
+#define FINISHED 2
+#define NULLTASKID 0
+/*大域変数 （池田）*/
+/*この３つは mtk_c.hにて定義*/
+#define NULLTASKID 0 /*キューの終端*/
+#define NUMTASK 5 /*最大タスク数*/
+#define NUMSEMAPHORE 5/*最大セマフォ*/
+#define STKSIZE 1024 /*スタックサイズ（1Kbyte)*/
+/*************************
+***各変数、構造体の定義
+*************************/
+typedef int TASK_ID_TYPE;
+TASK_ID_TYPE curr_task;
+TASK_ID_TYPE new_task;
+TASK_ID_TYPE next_task;
+TASK_ID_TYPE ready;
+typedef struct
+{
+int count;
+int nst; /* reserved */
+TASK_ID_TYPE task_list;
+} SEMAPHORE_TYPE;
+SEMAPHORE_TYPE semaphore[NUMSEMAPHORE];
+typedef struct
+{
+void (*task_addr)();
+void *stack_ptr;
+int priority;
+int status;
+TASK_ID_TYPE next;
+} TCB_TYPE;
+TCB_TYPE task_tab[NUMTASK+1];
+typedef struct
+{
+char ustack[STKSIZE];
+char sstack[STKSIZE];
+} STACK_TYPE;
+STACK_TYPE stacks[NUMTASK];
+・test2.c
+//test2
+#include <stdio.h>
+//#include "mtk_c.h"
+#define MAX 1024
+void task1(){
+int i =0;
+while(1){
+for(int j =0; j<20; j++){
+printf("○");}
+P(1);
+}
+}
+void task2(){
+while(1){
+printf("×");
+}
+}
+void task3(){
+while(1){
+for(int j =0; j<20; j++){
+printf("△");}
+V(1);
+}
+}
+void main(){
+init_kernel();
+set_task(task1);
+set_task(task2);
+set_task(task3);
+/* マルチタスキング開始 */
+printf("a");
+begin_sch();
+}
+・mtk_c.c
+#include <stdio.h>
+#include "mtk_c.h"
+extern void pv_handler();
+/***********************
+***関数の宣言
+***********************/
+void begin_sch();
+TASK_ID_TYPE removeq(TASK_ID_TYPE *pa);
+void addq(TASK_ID_TYPE *pa,TASK_ID_TYPE t);
+void sched();
+void set_task(void (*task)(void));
+void init_kernel();
+void *init_stack(int id);
+void v_body(TASK_ID_TYPE id);
+void wakeup(TASK_ID_TYPE id);
+void p_body(TASK_ID_TYPE ID);
+void sleep(TASK_ID_TYPE ID);
+void test_case(int pc);
+void test_case(int pc) {
+while (1) {
+printf("pc=%d", pc);
+}
+}
+/***********************
+***begin_sch
+***********************
+/ /* begin_sch */
+void begin_sch(){
+curr_task = removeq(&ready); /*ready キューのポインタを引数に*/
+init_timer();/*init_timer を呼び出す*/
+first_task();/*first_task を呼び出す*/
+}
+/***********************
+***removeq_q
+***********************/
+/*removeq*/
+TASK_ID_TYPE removeq(TASK_ID_TYPE *pa){ /*引数はキューへのポインタ*/
+TASK_ID_TYPE a;
+a = (*pa); /*a に pa の中身を格納*/
+*pa = task_tab[(*pa)].next; /* pa で*pa の中身を表せるのか？*/
+task_tab[a].next=0;
+return a;
+}
+/***********************
+***addq_q
+***********************/
+/*addq*/
+void addq(TASK_ID_TYPE *pa,TASK_ID_TYPE t){ /*引数はキューへのポインタと
+タスクの ID*/
+TASK_ID_TYPE a;
+a = (*pa);
+*(char *)0x00d00039 = 0x30 + t;
+if((*pa) == 0){
+(*pa) = t;
+}
+else{
+while(task_tab[a].next != 0){
+a = task_tab[a].next;
+}
+task_tab[a].next = t;
+}
+}
+/**********************
+***sched
+**********************/
+//タスクスケジュール関数
+void sched(){
+next_task = removeq(&ready); //ready キューの先頭のタスク ID を取り出し, next_task
+にセットする
+//next_task = 1;
+*(char *)0x00d0003d = 0x30 + next_task;
+if(next_task == NULLTASKID){ //next_task が NULLTASKID の場合は無限ループに入
+るようにする
+while(1){
+printf("q empty");
+}
+}
+}
+/**********************
+***set_task
+**********************/
+void set_task(void (*task)(void)){
+for (int i=1; i<=NUMTASK+1; i++){
+if(task_tab[i].task_addr == NULL){
+new_task = i; //task_tab[]の空きスロットがあればその ID を new_task に代入
+task_tab[i].task_addr = task; //上で見つけた TCB に, task_addr, status を代入
+task_tab[i].status = USE;
+task_tab[i].stack_ptr = init_stack(i); //init_stack()を起動し, 戻り値を TCB の stack_ptr
+に登録
+addq(&ready, new_task); //ready キューに new_task を代入
+break;
+}
+}
+}
+/********************
+***init kernel
+********************/
+void init_kernel()
+{
+for(int i=0; i<NUMTASK+1; i++)
+{
+task_tab[i].task_addr=NULL;
+task_tab[i].stack_ptr=NULL;
+task_tab[i].priority=0;
+task_tab[i].status=0;
+task_tab[i].next=NULL;
+}//TCB 配列の初期化：すべて空タスクとする
+ready = 0;//ready キューの初期化：空（タスク ID=0）とする
+//void (*fp)(char) = pv_handler();
+//*(char*)0x084=fp;
+*(int *)0x084=pv_handler;
+//P・V システムコールの割り込み処理ルーチン (pv handler) を TRAP #1 の割り
+込みベクタに登録する
+for(int i=0; i<NUMSEMAPHORE; i++)
+{
+semaphore[i].count=1;
+semaphore[i].nst=0;
+semaphore[i].task_list=0;
+}//TCB 配列の初期化：すべて空タスクとする
+}
+/*******************
+***init_stack
+*******************/
+void *init_stack(TASK_ID_TYPE id){
+void *ssp;
+ssp = &stacks[id-1].sstack[STKSIZE];//ssp に sstack の先頭（アドレス）を設定
+ssp -= 4;//initial PC の先頭<-ssp or16
+*(int *)ssp = task_tab[id].task_addr;
+//&ssp=task_tab[id].task_addr;
+// 「 initial( 初 期 )PC 」 の 部 分 に は タ ス ク の 実 行 開 始 ア ド レ ス
+task_tab[id].task_addr を設定する．
+ssp-=2;
+*(int *)ssp=0x0000;
+//「initial SR」の部分には 0x0000
+ssp -= 60;
+ssp -= 4;
+//15×4 バイト分の領域を飛ばす
+*(int *)ssp= &stacks[id-1].ustack[STKSIZE];
+//「initial USP」の部分はユーザスタックトップ stacks[id - 1].ustack[STKSIZE]
+を設定する．
+return ssp;
+}
+/*******************
+***v_body
+*******************/
+void v_body(int id) {
+semaphore[id].count = semaphore[id].count + 1;
+if(semaphore[id].count <= 0){
+wakeup(id);
+}
+}
+/*******************
+***wakeup
+*******************/
+void wakeup(int id){
+/*semaphore[id].task_list = semaphore[ready].task_list;*/
+if (ready == NULLTASKID){
+ready = semaphore[id].task_list;
+}
+else
+{
+TASK_ID_TYPE b;
+b = ready;
+while(task_tab[b].next != 0){
+b = task_tab[b].next;
+}
+task_tab[b].next = semaphore[id].task_list;
+}
+TASK_ID_TYPE d;
+d = semaphore[id].task_list;
+semaphore[id].task_list = task_tab[semaphore[id].task_list].next;
+task_tab[d].next = 0;
+}
+/******************
+***p_body
+******************/
+void p_body(int ID)
+{
+semaphore[ID].count = semaphore[ID].count-1;
+if (semaphore[ID].count < 0)
+{
+sleep(ID);
+}
+}
+/******************
+***sleep
+******************/
+void sleep(int ID)
+{
+if (semaphore[ID].task_list == NULLTASKID)
+{
+semaphore[ID].task_list =curr_task;
+}
+else
+{
+TASK_ID_TYPE c;
+c = task_tab[semaphore[ID].task_list].next;
+while (c != NULLTASKID)
+{
+c = task_tab[c].next;
+}
+c = curr_task;
+}
+/*task_tab[curr_task] = 0;*/
+sched();
+swtch();
+}
+・mtk_asm.s
+.extern curr_task
+.extern ready
+.extern addq
+.extern sched
+.extern task_tab
+.extern next_task
+.extern p_body
+.extern v_body
+.global first_task
+.global pv_handler
+.global P
+.global V
+.global swtch
+.global init_timer
+.global hard_clock
+.include "module.inc"
+*****************************
+***first_task
+*****************************
+first_task:
+move.b #0x31, LED1
+movea.l #task_tab, %a0 /*TCB の先頭アドレスを代入*/
+move.l curr_task, %d0 /*d0<-curr_task(現在実行中のタスク ID)*/
+/*TCB が１つ 20byte であると仮定する*/
+/*curr_task の TCB アドレスの計算*/
+move.w #0x14, %d1
+mulu.w %d1, %d0
+add.l %d0, %a0 /*a0<-(id)20+a0*/
+/*a0 は curr_task の TCB の先頭アドレス*/
+add.l #4, %a0 /*a0<-ssp(*stack_ptr)*/
+move.l (%a0), %ssp /**/
+movem.l (%ssp)+, %a1
+move.l %a1, %usp
+movem.l (%ssp)+, %a0-%a6/%d0-%d7 /*SSP からレジスタ回復*/
+rte
+*****************************
+***pv_handler
+*****************************
+pv_handler:
+movem.l %a0-%a6/%D0-%D7, -(%ssp)
+move.w %SR, %D7
+movem.w %D7, -(%ssp)
+move.w #0x2700, %SR
+movem.l %D1, -(%ssp) /*D1 を引数としてスタックに積む*/
+cmp.l #0, %D0
+bne vb
+pb:
+jsr p_body
+movem.l (%ssp)+, %D1
+bra finish
+vb:
+jsr v_body
+movem.l (%ssp)+, %D1
+finish:
+movem.w (%ssp)+, %D7
+move.w %D7, %SR
+movem.l (%ssp)+, %a0-%a6/%D0-%D7
+rte
+*****************************
+***P
+*****************************
+P:
+movem.l %D0-%D1/%a0, -(%sp)/*usp*/
+move.l %sp, %a0
+add.l #19, %a0
+move.l #0, %D0
+move.b (%a0), %D1
+trap #1
+movem.l (%sp)+, %D0-%D1/%a0/*usp*/
+rts
+*****************************
+***V
+*****************************
+V:
+movem.l %d0-%d1/%a0, -(%sp) /*usp*/
+move.l %sp, %a0
+add.l #19, %a0
+move.l #0, %d0
+add.l #1, %d0
+move.b (%a0), %d1
+trap #1
+movem.l (%sp)+, %d0-%d1/%a0 /*usp*/
+rts
+*****************************
+***swtch
+*****************************
+swtch:
+move.w %SR, -(%ssp)
+movem.l %a0-%a6/%d0-%d7, -(%ssp)
+move.l %usp, %a0
+movem.l %a0, -(%ssp) /*USP のアドレスが不明*/
+movea.l #task_tab, %a0 /*TCB の先頭アドレスを代入*/
+move.l curr_task, %d0 /*d0<-curr_task(現在実行中のタスク ID)*/
+/*TCB が１つ 20byte であると仮定する*/
+/*curr_task の TCB アドレスの計算*/
+move.w #0x14, %d1
+mulu.w %d1, %d0
+add.l %d0, %a0 /*a0<-(id)20+a0*/
+/*a0 は curr_task の TCB の先頭アドレス*/
+addq.l #4, %a0 /*a0<-ssp(*stack_ptr)*/
+move.l %ssp, (%a0)/*ssp*/
+move.l #curr_task, %a0 /*a0<-curr_task アドレス*/
+move.l #next_task, %a1 /*a1<-next_task アドレス*/
+move.l (%a1), (%a0) /*curr_task<-next_task(値)*/
+movea.l #task_tab, %a0 /*TCB の先頭アドレスを代入*/
+move.l curr_task, %d0 /*d0<-curr_task(現在実行中のタスク ID)*/
+/*TCB が１つ 20byte であると仮定する*/
+/*curr_task の TCB アドレスの計算*/
+move.w #0x14, %d1
+mulu.w %d1, %d0
+add.l %d0, %a0 /*a0<-(id)20+a0*/
+/*a0 は curr_task の TCB の先頭アドレス*/
+add.l #4, %a0 /*a0<-ssp(*stack_ptr)*/
+move.l (%a0), %ssp /**/
+movem.l (%ssp)+, %a1
+move.l %a1, %usp
+movem.l (%ssp)+, %a0-%a6/%d0-%d7 /*SSP からレジスタ回復*/
+rte
+*****************************
+***init_timer
+*****************************
+init_timer: /*クロック割り込みルーチン*/
+movem.l %d0-%d7/%a0-%a6,-(%sp)
+/*システムコールによる RESET_TIMER の起動*/
+move.l #SYSCALL_NUM_RESET_TIMER,%d0
+/*SYSCALL_NUM_RESET_TIMER 3*/
+trap #0
+/*システムコールによる SET_TIMER の起動*/
+move.l #SYSCALL_NUM_SET_TIMER, %d0 /*SYSCALL_NUM_SET_TIMER
+4*/
+move.w #10000, %d1
+move.l #hard_clock, %d2 /*呼び出す関数を指定*/
+trap #0
+movem.l (%sp)+,%d0-%d7/%a0-%a6
+rts
+*****************************
+***hard_clock
+*****************************
+hard_clock:/*タイマ割り込みルーチン*/
+movem.l %d0-%d7/%a0-%a6,-(%sp)/*レジスタの退避が不安*/
+move.l curr_task, %d1 /*curr_task を%d0 にロード*/
+move.l #ready, %d0 /*ready を%d1 にロード*/
+movem.l %d0-%d1,-(%sp) /*スタックに addq()に必要な引き数を積む*/
+jsr addq /*addq()の呼び出し*/
+movem.l (%sp)+,%d0-%d1
+jsr sched /*sched()の呼び出し*/
+jsr swtch
+movem.l (%sp)+,%d0-%d7/%a0-%a6
+rts
+・module.inc
+***************************************************************
+** 各種レジスタ定義 A
+***************************************************************
+***************
+** レジスタ群の先頭
+***************
+.equ REGBASE, 0xFFF000 | DMAP を使用．
+.equ IOBASE, 0x00d00000
+***************
+** 割り込み関係のレジスタ
+***************
+.equ IVR, REGBASE+0x300 | 割り込みベクタレジス w タ
+.equ IMR, REGBASE+0x304 | 割り込みマスクレジスタ
+.equ ISR, REGBASE+0x30c | 割り込みステータスレジスタ
+.equ IPR, REGBASE+0x310 | 割り込みペンディングレジスタ
+***************
+** タイマ関係のレジスタ
+***************
+.equ TCTL1, REGBASE+0x600 | タイマ１コントロールレジスタ
+.equ TPRER1, REGBASE+0x602 | タイマ１プリスケーラレジスタ
+.equ TCMP1, REGBASE+0x604 | タイマ１コンペアレジスタ
+.equ TCN1, REGBASE+0x608 | タイマ１カウンタレジスタ
+.equ TSTAT1, REGBASE+0x60a | タイマ１ステータスレジスタ
+***************
+** UART1（送受信）関係のレジスタ
+***************
+.equ USTCNT1, REGBASE+0x900 | UART1 ステータス/コントロールレジスタ
+.equ UBAUD1, REGBASE+0x902 | UART1 ボーコントロールレジスタ
+.eq
