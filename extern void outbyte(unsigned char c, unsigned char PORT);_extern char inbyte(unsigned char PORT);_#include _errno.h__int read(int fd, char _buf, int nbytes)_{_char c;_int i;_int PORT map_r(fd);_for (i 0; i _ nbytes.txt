@@ -1,0 +1,81 @@
+extern void outbyte(unsigned char c, unsigned char PORT);
+extern char inbyte(unsigned char PORT);
+#include <errno.h>
+int read(int fd, char *buf, int nbytes)
+{
+char c;
+int i;
+int PORT = map_r(fd);
+for (i = 0; i < nbytes; i++) {
+c = inbyte(PORT);
+if (c == '\r' || c == '\n'){ /* CR -> CRLF */
+outbyte('\r', PORT);
+outbyte('\n', PORT);
+*(buf + i) = '\n';
+/* } else if (c == '\x8'){ */ /* backspace \x8 */
+} else if (c == '\x7f'){ /* backspace \x8 -> \x7f (by terminal
+config.) */
+if (i > 0){
+outbyte('\x8', PORT); /* bs */
+outbyte(' ', PORT); /* spc */
+outbyte('\x8', PORT); /* bs */
+i--;
+}
+i--;
+continue;
+} else {
+outbyte(c, PORT);
+*(buf + i) = c;
+}
+if (*(buf + i) == '\n'){
+return (i + 1);
+}
+}
+return (i);
+}
+int write(int fd, char *buf, int nbytes)
+{
+int i, j;
+int PORT = map_w(fd);
+*(char *)0x00d0002f = 0x30+fd;
+*(char *)0x00d0002d = 0x30+PORT;
+*(char *)0x00d0003f = 0x30+nbytes;
+for (i = 0; i < nbytes; i++) {
+*(char *)0x00d0003d = 0x30+i;
+if (*(buf + i) == '\n') {
+outbyte('\r', PORT); /* LF -> CRLF */
+}
+*(char *)0x00d0003b = 0x31+i;
+*(char *)0x00d0003b = 0x39;
+outbyte(*(buf + i), PORT);
+for (j = 0; j < 300; j++);
+}
+*(char *)0x00d0002f = 0x30;
+return (nbytes);
+}
+int map_r(int fd)
+{
+if(fd == 0||fd==3){
+return 0;
+}
+else if(fd == 4){
+return 1;
+}
+else{
+return EBADF;
+}
+}
+int map_w(int fd)
+{
+if(fd == 1||fd==2||fd==3){
+return 0;
+}
+else if(fd == 4){
+return 1;
+}
+else{
+return EBADF;
+}
+int debug_map(int fd){
+return 0;}
+}
