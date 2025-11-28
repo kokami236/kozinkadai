@@ -1,0 +1,66 @@
+/*******************
+***v_body
+*******************/
+void v_body(int id) {
+semaphore[id].count = semaphore[id].count + 1;
+if(semaphore[id].count <= 0){
+wakeup(id);
+}
+}
+/*******************
+***wakeup
+*******************/
+void wakeup(int id){
+/*semaphore[id].task_list = semaphore[ready].task_list;*/
+if (ready == NULLTASKID){
+ready = semaphore[id].task_list;
+}
+else
+{
+TASK_ID_TYPE b;
+b = ready;
+while(task_tab[b].next != 0){
+b = task_tab[b].next;
+}
+task_tab[b].next = semaphore[id].task_list;
+}
+TASK_ID_TYPE d;
+d = semaphore[id].task_list;
+semaphore[id].task_list = task_tab[semaphore[id].task_list].next;
+task_tab[d].next = 0;
+}
+/******************
+***p_body
+******************/
+void p_body(int ID)
+{
+semaphore[ID].count = semaphore[ID].count-1;
+if (semaphore[ID].count < 0)
+{
+sleep(ID);
+}
+}
+/******************
+***sleep
+******************/
+void sleep(int ID)
+{
+if (semaphore[ID].task_list == NULLTASKID)
+{
+semaphore[ID].task_list =curr_task;
+}
+else
+{
+TASK_ID_TYPE c;
+c = task_tab[semaphore[ID].task_list].next;
+while (c != NULLTASKID)
+{
+c = task_tab[c].next;
+}
+c = curr_task;
+}
+/*task_tab[curr_task] = 0;*/
+sched();
+swtch();
+}
+・mtk_as
