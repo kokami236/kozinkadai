@@ -1,0 +1,38 @@
+.global inkey
+.equ SYSCALL_NUM_GETSTRING, 1
+
+.section .text
+.even
+
+inkey:
+    movem.l %d1-%d3, -(%sp)
+
+    /* * move.l を使うのでオフセットは 16 です。
+     * これなら上位ビットのゴミも気にする必要がありません。
+     */
+    move.l 16(%sp), %d1         /* ch (int 4byte) を丸ごと取得 */
+
+    move.l #SYSCALL_NUM_GETSTRING, %d0
+    move.l #inkey_buf, %d2
+    move.l #1, %d3
+    trap #0
+
+    cmpi.l #1, %d0
+    beq inkey_success
+
+    /* 入力なしの場合 */
+    moveq #-1, %d0
+    bra inkey_end
+
+inkey_success:
+    moveq #0, %d0
+    move.b inkey_buf, %d0
+
+inkey_end:
+    movem.l (%sp)+, %d1-%d3
+    rts
+
+.section .bss
+.even
+inkey_buf:
+    .ds.b 1
