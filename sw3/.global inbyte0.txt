@@ -1,0 +1,122 @@
+.global inbyte0
+.global inbyte1
+.global inkey0
+.global inkey1
+
+.equ SYSCALL_NUM_GETSTRING, 1
+
+.section .text
+.even
+
+/* -------------------------
+ * port0 (UART1)
+ * ------------------------- */
+inbyte0:
+    link.w  %a6, #-4
+    movem.l %d1-%d3, -(%sp)
+
+inbyte0_loop:
+    move.l  #SYSCALL_NUM_GETSTRING, %d0
+    move.l  #0, %d1              /* ★ port = 0 */
+
+    move.l  %a6, %d2
+    subi.l  #4, %d2              /* buf = a6-4 */
+
+    move.l  #1, %d3
+    trap    #0
+
+    cmpi.l  #1, %d0
+    bne     inbyte0_loop
+
+    clr.l   %d0
+    move.b  -4(%a6), %d0
+
+    movem.l (%sp)+, %d1-%d3
+    unlk    %a6
+    rts
+
+/* -------------------------
+ * port1 (UART2)
+ * ------------------------- */
+inbyte1:
+    link.w  %a6, #-4
+    movem.l %d1-%d3, -(%sp)
+
+inbyte1_loop:
+    move.l  #SYSCALL_NUM_GETSTRING, %d0
+    move.l  #1, %d1              /* ★ port = 1 にするだけ */
+
+    move.l  %a6, %d2
+    subi.l  #4, %d2
+
+    move.l  #1, %d3
+    trap    #0
+
+    cmpi.l  #1, %d0
+    bne     inbyte1_loop
+
+    clr.l   %d0
+    move.b  -4(%a6), %d0
+
+    movem.l (%sp)+, %d1-%d3
+    unlk    %a6
+    rts
+
+
+/* =========================
+ * inkey (non-blocking風) も同様に2本
+ * ========================= */
+
+.section .text
+.even
+
+inkey0:
+    link    %a6, #-4
+    movem.l %d1-%d3/%a0, -(%sp)
+
+    move.l  #SYSCALL_NUM_GETSTRING, %d0
+    move.l  #0, %d1              /* ★ port=0 */
+    lea     -1(%a6), %a0
+    move.l  %a0, %d2
+    move.l  #1, %d3
+    trap    #0
+
+    cmpi.l  #1, %d0
+    beq     inkey0_success
+    moveq   #-1, %d0
+    bra     inkey0_end
+
+inkey0_success:
+    moveq   #0, %d0
+    move.b  -1(%a6), %d0
+
+inkey0_end:
+    movem.l (%sp)+, %d1-%d3/%a0
+    unlk    %a6
+    rts
+
+
+inkey1:
+    link    %a6, #-4
+    movem.l %d1-%d3/%a0, -(%sp)
+
+    move.l  #SYSCALL_NUM_GETSTRING, %d0
+    move.l  #1, %d1              /* ★ port=1 */
+    lea     -1(%a6), %a0
+    move.l  %a0, %d2
+    move.l  #1, %d3
+    trap    #0
+
+    cmpi.l  #1, %d0
+    beq     inkey1_success
+    moveq   #-1, %d0
+    bra     inkey1_end
+
+inkey1_success:
+    moveq   #0, %d0
+    move.b  -1(%a6), %d0
+
+inkey1_end:
+    movem.l (%sp)+, %d1-%d3/%a0
+    unlk    %a6
+    rts
