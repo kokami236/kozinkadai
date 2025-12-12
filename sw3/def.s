@@ -43,3 +43,4 @@
 .equ SYSCALL_NUM_PUTSTRING,   2 |文字列出力(PUTSTRING)|
 .equ SYSCALL_NUM_RESET_TIMER, 3 |タイマリセット|
 .equ SYSCALL_NUM_SET_TIMER,   4 |タイマセット|/* UART2（送受信）関係のレジスタ（UART1 + 0x10） */
+
