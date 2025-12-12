@@ -120,3 +120,4 @@ inkey1_end:
     movem.l (%sp)+, %d1-%d3/%a0
     unlk    %a6
     rts
+
