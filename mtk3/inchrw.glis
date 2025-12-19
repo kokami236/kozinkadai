@@ -1,0 +1,47 @@
+68K GAS  inchrw.s 			page 1
+
+
+   1               	.global inbyte
+   2               	.global inkey
+   3               	.equ SYSCALL_NUM_GETSTRING, 1   /* ここで定義すれば defs.s は不要 */
+   4               	
+   5               	.section .text
+   6               	.even
+   7               	inbyte:
+   8 0000 4E56 FFFC 	    link.w  %a6, #-4
+   9 0004 48E7 7000 	    movem.l %d1-%d3, -(%sp)
+  10               	
+  11               	inbyte_loop1:
+  12 0008 7001      	    move.l  #SYSCALL_NUM_GETSTRING, %d0
+  13 000a 7200      	    move.l  #0, %d1
+  14               	    
+  15               	    /* バッファアドレスの計算: FP(%a6) - 4 */
+  16 000c 240E      	    move.l  %a6, %d2
+  17 000e 0482 0000 	    subi.l  #4, %d2
+  17      0004 
+  18               	    
+  19 0014 7601      	    move.l  #1, %d3
+  20 0016 4E40      	    trap    #0
+  21               	
+  22 0018 0C80 0000 	    cmpi.l  #1, %d0
+  22      0001 
+  23 001e 6600 FFE8 	    bne     inbyte_loop1
+  24               	
+  25 0022 4280      	    clr.l   %d0
+  26               	    /* 受信データの取得 */
+  27 0024 102E FFFC 	    move.b  -4(%a6), %d0    
+  28 0028 4CDF 000E 	    movem.l (%sp)+, %d1-%d3
+  29 002c 4E5E      		unlk    %a6
+  30 002e 4E75      		rts
+  31               	
+  32               	
+68K GAS  inchrw.s 			page 2
+
+
+DEFINED SYMBOLS
+            inchrw.s:7      .text:0000000000000000 inbyte
+            inchrw.s:3      *ABS*:0000000000000001 SYSCALL_NUM_GETSTRING
+            inchrw.s:11     .text:0000000000000008 inbyte_loop1
+
+UNDEFINED SYMBOLS
+inkey

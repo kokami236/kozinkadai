@@ -1,0 +1,115 @@
+68K GAS  outchr.s 			page 1
+
+
+   1               	.include "defs.s"
+   1               	/* レジスタ定義 */
+   2               	.equ REGBASE, 0xfff000 | DMAP を使用．
+   3               	.equ IOBASE, 0x00d00000
+   4               	
+   5               	/* 割り込み関係のレジスタ*/
+   6               	.equ IVR, REGBASE+0x300 | 割り込みベクタレジスタ
+   7               	.equ IMR, REGBASE+0x304 | 割り込みマスクレジスタ
+   8               	.equ ISR, REGBASE+0x30c | 割り込みステータスレジスタ
+   9               	.equ IPR, REGBASE+0x310 | 割り込みペンディングレジスタ
+  10               	
+  11               	/* タイマ関係のレジスタ */
+  12               	.equ TCTL1, REGBASE+0x600  | タイマ１コントロールレジスタ
+  13               	.equ TPRER1, REGBASE+0x602 | タイマ１プリスケーラレジスタ
+  14               	.equ TCMP1, REGBASE+0x604  | タイマ１コンペアレジスタ
+  15               	.equ TCN1, REGBASE+0x608   | タイマ１カウンタレジスタ
+  16               	.equ TSTAT1, REGBASE+0x60a | タイマ１ステータスレジスタ
+  17               	
+  18               	/* UART1（送受信）関係のレジスタ */
+  19               	.equ USTCNT1, REGBASE+0x900 | UART1 ステータス/コントロールレジスタ
+  20               	.equ UBAUD1, REGBASE+0x902  | UART1 ボーコントロールレジスタ
+  21               	.equ URX1, REGBASE+0x904    | UART1 受信レジスタ
+  22               	.equ UTX1, REGBASE+0x906    | UART1 送信レジスタ
+  23               	
+  24               	/* UART2（送受信）関係のレジスタ */
+  25               	.equ USTCNT2, REGBASE+0x910 | UART2 ステータス/コントロールレジスタ
+  26               	.equ UBAUD2, REGBASE+0x912  | UART2 ボーコントロールレジスタ
+  27               	.equ URX2, REGBASE+0x914    | UART2 受信レジスタ
+  28               	.equ UTX2, REGBASE+0x916    | UART2 送信レジスタ
+  29               	
+  30               	/* LED */
+  31               	/*ここで指定されたアドレスに表示させたい文字コードを入れることでLED�
+  32               	.equ LED7, IOBASE+0x000002f | ボード搭載の LED 用レジスタ
+  33               	.equ LED6, IOBASE+0x000002d 
+  34               	.equ LED5, IOBASE+0x000002b
+  35               	.equ LED4, IOBASE+0x0000029
+  36               	.equ LED3, IOBASE+0x000003f
+  37               	.equ LED2, IOBASE+0x000003d
+  38               	.equ LED1, IOBASE+0x000003b
+  39               	.equ LED0, IOBASE+0x0000039
+  40               	
+  41               	/*D0の値で呼び出すサブルーチンを決めている。ここでは何を呼び出して�
+  42               	.equ SYSCALL_NUM_GETSTRING,   1 |文字列入力（GETSTRING）（ここからコメント鴻上）
+  43               	.equ SYSCALL_NUM_PUTSTRING,   2 |文字列出力(PUTSTRING)|
+  44               	.equ SYSCALL_NUM_RESET_TIMER, 3 |タイマリセット|
+  45               	.equ SYSCALL_NUM_SET_TIMER,   4 |タイマセット|
+  46               	.equ SYSCALL_NUM_SKIPMT, 5
+   2               	.global outbyte
+   3               	
+   4               	.text
+   5               	.even
+   6               	outbyte:
+   7 0000 48E7 7080 	    movem.l %D1-%D3/%A0, -(%SP)
+   8               	outbyte_retry:
+   9 0004 7002      	    move.l #SYSCALL_NUM_PUTSTRING, %D0
+  10 0006 204F      	    movea.l %sp, %A0
+  11 0008 D1FC 0000 	    adda.l #20, %A0
+68K GAS  outchr.s 			page 2
+
+
+  11      0014 
+  12 000e 2210      	    move.l (%A0), %D1
+  13 0010 D1FC 0000 	    adda.l #7, %A0
+  13      0007 
+  14 0016 2408      	    move.l %A0, %D2
+  15 0018 7601      	    move.l #1, %D3
+  16 001a 4E40      	    trap #0
+  17 001c 0C80 0000 	    cmpi.l #0, %D0
+  17      0000 
+  18 0022 6700 FFE0 	    beq outbyte_retry
+  19 0026 4CDF 010E 	    movem.l (%SP)+, %D1-%D3/%A0
+  20 002a 4E75      	    rts
+68K GAS  outchr.s 			page 3
+
+
+DEFINED SYMBOLS
+              defs.s:2      *ABS*:0000000000fff000 REGBASE
+              defs.s:3      *ABS*:0000000000d00000 IOBASE
+              defs.s:6      *ABS*:0000000000fff300 IVR
+              defs.s:7      *ABS*:0000000000fff304 IMR
+              defs.s:8      *ABS*:0000000000fff30c ISR
+              defs.s:9      *ABS*:0000000000fff310 IPR
+              defs.s:12     *ABS*:0000000000fff600 TCTL1
+              defs.s:13     *ABS*:0000000000fff602 TPRER1
+              defs.s:14     *ABS*:0000000000fff604 TCMP1
+              defs.s:15     *ABS*:0000000000fff608 TCN1
+              defs.s:16     *ABS*:0000000000fff60a TSTAT1
+              defs.s:19     *ABS*:0000000000fff900 USTCNT1
+              defs.s:20     *ABS*:0000000000fff902 UBAUD1
+              defs.s:21     *ABS*:0000000000fff904 URX1
+              defs.s:22     *ABS*:0000000000fff906 UTX1
+              defs.s:25     *ABS*:0000000000fff910 USTCNT2
+              defs.s:26     *ABS*:0000000000fff912 UBAUD2
+              defs.s:27     *ABS*:0000000000fff914 URX2
+              defs.s:28     *ABS*:0000000000fff916 UTX2
+              defs.s:32     *ABS*:0000000000d0002f LED7
+              defs.s:33     *ABS*:0000000000d0002d LED6
+              defs.s:34     *ABS*:0000000000d0002b LED5
+              defs.s:35     *ABS*:0000000000d00029 LED4
+              defs.s:36     *ABS*:0000000000d0003f LED3
+              defs.s:37     *ABS*:0000000000d0003d LED2
+              defs.s:38     *ABS*:0000000000d0003b LED1
+              defs.s:39     *ABS*:0000000000d00039 LED0
+              defs.s:42     *ABS*:0000000000000001 SYSCALL_NUM_GETSTRING
+              defs.s:43     *ABS*:0000000000000002 SYSCALL_NUM_PUTSTRING
+              defs.s:44     *ABS*:0000000000000003 SYSCALL_NUM_RESET_TIMER
+              defs.s:45     *ABS*:0000000000000004 SYSCALL_NUM_SET_TIMER
+              defs.s:46     *ABS*:0000000000000005 SYSCALL_NUM_SKIPMT
+            outchr.s:6      .text:0000000000000000 outbyte
+            outchr.s:8      .text:0000000000000004 outbyte_retry
+
+NO UNDEFINED SYMBOLS

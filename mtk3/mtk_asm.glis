@@ -1,0 +1,366 @@
+68K GAS  mtk_asm.s 			page 1
+
+
+   1               	.include "defs.s"
+   1               	/* レジスタ定義 */
+   2               	.equ REGBASE, 0xfff000 | DMAP を使用．
+   3               	.equ IOBASE, 0x00d00000
+   4               	
+   5               	/* 割り込み関係のレジスタ*/
+   6               	.equ IVR, REGBASE+0x300 | 割り込みベクタレジスタ
+   7               	.equ IMR, REGBASE+0x304 | 割り込みマスクレジスタ
+   8               	.equ ISR, REGBASE+0x30c | 割り込みステータスレジスタ
+   9               	.equ IPR, REGBASE+0x310 | 割り込みペンディングレジスタ
+  10               	
+  11               	/* タイマ関係のレジスタ */
+  12               	.equ TCTL1, REGBASE+0x600  | タイマ１コントロールレジスタ
+  13               	.equ TPRER1, REGBASE+0x602 | タイマ１プリスケーラレジスタ
+  14               	.equ TCMP1, REGBASE+0x604  | タイマ１コンペアレジスタ
+  15               	.equ TCN1, REGBASE+0x608   | タイマ１カウンタレジスタ
+  16               	.equ TSTAT1, REGBASE+0x60a | タイマ１ステータスレジスタ
+  17               	
+  18               	/* UART1（送受信）関係のレジスタ */
+  19               	.equ USTCNT1, REGBASE+0x900 | UART1 ステータス/コントロールレジスタ
+  20               	.equ UBAUD1, REGBASE+0x902  | UART1 ボーコントロールレジスタ
+  21               	.equ URX1, REGBASE+0x904    | UART1 受信レジスタ
+  22               	.equ UTX1, REGBASE+0x906    | UART1 送信レジスタ
+  23               	
+  24               	/* UART2（送受信）関係のレジスタ */
+  25               	.equ USTCNT2, REGBASE+0x910 | UART2 ステータス/コントロールレジスタ
+  26               	.equ UBAUD2, REGBASE+0x912  | UART2 ボーコントロールレジスタ
+  27               	.equ URX2, REGBASE+0x914    | UART2 受信レジスタ
+  28               	.equ UTX2, REGBASE+0x916    | UART2 送信レジスタ
+  29               	
+  30               	/* LED */
+  31               	/*ここで指定されたアドレスに表示させたい文字コードを入れることでLED�
+  32               	.equ LED7, IOBASE+0x000002f | ボード搭載の LED 用レジスタ
+  33               	.equ LED6, IOBASE+0x000002d 
+  34               	.equ LED5, IOBASE+0x000002b
+  35               	.equ LED4, IOBASE+0x0000029
+  36               	.equ LED3, IOBASE+0x000003f
+  37               	.equ LED2, IOBASE+0x000003d
+  38               	.equ LED1, IOBASE+0x000003b
+  39               	.equ LED0, IOBASE+0x0000039
+  40               	
+  41               	/*D0の値で呼び出すサブルーチンを決めている。ここでは何を呼び出して�
+  42               	.equ SYSCALL_NUM_GETSTRING,   1 |文字列入力（GETSTRING）（ここからコメント鴻上）
+  43               	.equ SYSCALL_NUM_PUTSTRING,   2 |文字列出力(PUTSTRING)|
+  44               	.equ SYSCALL_NUM_RESET_TIMER, 3 |タイマリセット|
+  45               	.equ SYSCALL_NUM_SET_TIMER,   4 |タイマセット|
+  46               	.equ SYSCALL_NUM_SKIPMT, 5
+   2               	.section .text
+   3               	
+   4               	.equ SIZEOF_TCB_TYPE, 20
+   5               	.equ TCB_TYPE_STACK_PTR_OFFSET, 4
+   6               	.equ TCB_TYPE_NEXT_OFFSET, 16
+   7               	
+   8               	.global first_task
+   9               	.even
+  10               	first_task:
+  11               	    * 1. TCB 先頭番地の計算：curr_task の TCB のアドレスを見つける
+68K GAS  mtk_asm.s 			page 2
+
+
+  12 0000 2239 0000 	    move.l curr_task, %D1      | %D1.l = curr_task
+  12      0000 
+  13 0006 C3FC 0014 	    muls #SIZEOF_TCB_TYPE, %D1 | %D1.l = curr_task * SIZEOF_TCB_TYPE
+  14 000a 43F9 0000 	    lea.l task_tab, %A1        | %A1.l = task_tab
+  14      0000 
+  15 0010 D3C1      	    add.l %D1, %A1             | %A1.l = &task_tab[curr_task]
+  16               	
+  17 0012 23CF 0000 	    move.l %sp, SINGLE_SSP
+  17      0000 
+  18               	
+  19               	    * 2. USP，SSP の値の回復
+  20               	    * %SSP = &task_tab[curr_task]->stack_ptr
+  21 0018 2E69 0004 	    move.l TCB_TYPE_STACK_PTR_OFFSET(%A1), %SP
+  22 001c 225F      	    move.l (%SP)+, %A1
+  23 001e 4E61      	    move.l %A1, %USP
+  24               	
+  25               	    * 3. 残りの全レジスタの回復
+  26 0020 4CDF 7FFF 	    movem.l (%SP)+, %D0-%D7/%A0-%A6
+  27               	
+  28               	    * 4. ユーザタスクの起動（SR,PCの復帰）
+  29 0024 4E73      	    rte
+  30               	BACKTO_SINGLE:
+  31 0026 4E75      	    rts
+  32               	.data
+  33               	.even
+  34 0000 0000 0000 	SINGLE_SSP: .ds.l 1
+  35               	
+  36               	.section .text
+  37               	.global swtch
+  38               	.even
+  39               	swtch:
+  40               	    * 1. SR をスタックに積んで，RTE で復帰できるようにする．
+  41 0028 40E7      	    move.w %SR, -(%SP) 
+  42               	
+  43               	    * 2. 実行中のタスクのレジスタの退避
+  44 002a 48E7 FFFE 	    movem.l %D0-%D7/%A0-%A6, -(%SP)
+  45 002e 4E69      	    move.l %USP, %A1
+  46 0030 2F09      	    move.l %A1, -(%SP)
+  47               	
+  48               	    * 3. SSPの保存
+  49 0032 2239 0000 	    move.l curr_task, %D1      | %D1.l = curr_task
+  49      0000 
+  50 0038 C3FC 0014 	    muls #SIZEOF_TCB_TYPE, %D1 | %D1.l = curr_task * SIZEOF_TCB_TYPE
+  51 003c 43F9 0000 	    lea.l task_tab, %A1        | %A1.l = task_tab
+  51      0000 
+  52 0042 D3C1      	    add.l %D1, %A1             | %A1.l = &task_tab[curr_task]
+  53 0044 234F 0004 	    move.l %SP, TCB_TYPE_STACK_PTR_OFFSET(%A1)
+  54               	
+  55               	    * 4. curr_task を変更
+  56 0048 23F9 0000 	    move.l next_task, curr_task
+  56      0000 0000 
+  56      0000 
+  57               	
+  58               	    * 5. 次のタスクの SSP の読み出し
+  59 0052 2239 0000 	    move.l curr_task, %D1      | %D1.l = curr_task
+  59      0000 
+  60 0058 C3FC 0014 	    muls #SIZEOF_TCB_TYPE, %D1 | %D1.l = curr_task * SIZEOF_TCB_TYPE
+68K GAS  mtk_asm.s 			page 3
+
+
+  61 005c 43F9 0000 	    lea.l task_tab, %A1        | %A1.l = task_tab
+  61      0000 
+  62 0062 D3C1      	    add.l %D1, %A1             | %A1.l = &task_tab[curr_task]
+  63               	    * %SP(SSP) = &task_tab[curr_task]->stack_ptr
+  64 0064 2E69 0004 	    move.l TCB_TYPE_STACK_PTR_OFFSET(%A1), %SP
+  65               	
+  66               	    * 6. 次のタスクのレジスタの読み出し
+  67 0068 225F      	    move.l (%SP)+, %A1
+  68 006a 4E61      	    move.l %A1, %USP
+  69 006c 4CDF 7FFF 	    movem.l (%SP)+, %D0-%D7/%A0-%A6
+  70               	
+  71               	    * 7. タスク切り替え 
+  72 0070 4E73      	    rte
+  73               	
+  74               	* タイマ関連のサブルーチン
+  75               	.even
+  76               	hard_clock:
+  77 0072 48E7 4040 	    movem.l %D1/%A1, -(%SP)
+  78               	
+  79 0076 0CB9 0000 	    cmpi.l #0, ready
+  79      0000 0000 
+  79      0000 
+  80 0080 6600 002A 	    bne exe_addq
+  81 0084 23F9 0000 	    move.l curr_task, ready
+  81      0000 0000 
+  81      0000 
+  82               	    * TCB 先頭番地の計算：ready の TCB のアドレスを見つける
+  83 008e 2239 0000 	    move.l ready, %D1          | %D1.l = ready
+  83      0000 
+  84 0094 C3FC 0014 	    muls #SIZEOF_TCB_TYPE, %D1 | %D1.l = ready * SIZEOF_TCB_TYPE
+  85 0098 43F9 0000 	    lea.l task_tab, %A1        | %A1.l = task_tab
+  85      0000 
+  86 009e D3C1      	    add.l %D1, %A1             | %A1.l = &task_tab[ready]
+  87 00a0 237C 0000 	    move.l #0, TCB_TYPE_NEXT_OFFSET(%A1)
+  87      0000 0010 
+  88 00a8 6000 0024 	    bra end_addq
+  89               	exe_addq:
+  90               	    * addqに渡す引数をスタックに詰める（右から左）
+  91 00ac 2F39 0000 	    move.l curr_task, -(%SP)
+  91      0000 
+  92               	    * TCB 先頭番地の計算：ready の TCB のアドレスを見つける
+  93 00b2 2239 0000 	    move.l ready, %D1          | %D1.l = ready
+  93      0000 
+  94 00b8 C3FC 0014 	    muls #SIZEOF_TCB_TYPE, %D1 | %D1.l = ready * SIZEOF_TCB_TYPE
+  95 00bc 43F9 0000 	    lea.l task_tab, %A1        | %A1.l = task_tab
+  95      0000 
+  96 00c2 D3C1      	    add.l %D1, %A1             | %A1.l = &task_tab[ready]
+  97 00c4 2F09      	    move.l %A1, -(%SP)
+  98 00c6 4EB9 0000 		jsr addq /*addqの呼び出し*/
+  98      0000 
+  99 00cc 508F      	    addq.l #8, %SP /* %SPを戻す */
+ 100               	end_addq:
+ 101 00ce 4EB9 0000 		jsr sched /*schedの呼びだし*/
+ 101      0000 
+ 102 00d4 4EBA FF52 		jsr swtch /*swtchの呼び出し*/
+ 103 00d8 4CDF 0202 	    movem.l (%SP)+, %D1/%A1
+ 104 00dc 4E75      		rts
+68K GAS  mtk_asm.s 			page 4
+
+
+ 105               	
+ 106               	.global init_timer
+ 107               	.even
+ 108               	init_timer:
+ 109               		/*タイマのリセットをする*/
+ 110 00de 7003      		move.l #SYSCALL_NUM_RESET_TIMER, %D0
+ 111 00e0 4E40      		trap #0
+ 112               		/*タイマのセットをする*/
+ 113 00e2 7004      		move.l #SYSCALL_NUM_SET_TIMER, %D0
+ 114 00e4 323C 2710 		move.w #10000, %D1 /*1秒に設定*/
+ 115 00e8 243C 0000 		move.l #hard_clock, %D2 /*hard_clockを呼び出すよう設定*/
+ 115      0000 
+ 116 00ee 4E40      		trap #0
+ 117 00f0 4E75      	        rts
+ 118               	
+ 119               	.global skipmt
+ 120               	.even
+ 121               	skipmt:
+ 122 00f2 7005      	        move.l #SYSCALL_NUM_SKIPMT, %D0
+ 123 00f4 4E40      	        trap #0
+ 124 00f6 4E75      	        rts
+ 125               	
+ 126               	.include "semasema.s"
+   1               	.section .text
+   2               	
+   3               	*****************************
+   4               		***pv_handler 40ページ！
+   5               		***D0の値でPかVか半別する
+   6               		***D1を引数としてp_body/v_bodyに渡す
+   7               	*****************************
+   8               	.global pv_handler
+   9               	.even
+  10               	pv_handler:
+  11 00f8 48E7 C000 		movem.l %D0-%D1, -(%SP) /*スーパーバイザモードなうだからssp、ユーザ側ならsp�
+  12 00fc 40E7      		move.w %SR, -(%SP)      /* SRの値をスタックに退避 */
+  13 00fe 46FC 2700 		move.w #0x2700, %SR     /* 走行レベルを7にする。特権モード2700=2進数で0010 0111 
+  14 0102 2F01      		move.l %D1, -(%SP)      /*D1 を引数としてスタックに積む(p/v)*/
+  15 0104 0C80 0000 		cmpi.l #2, %D0          /*D0=0 ->P操作それ以外　D0≠0 ->V*/
+  15      0002 
+  16 010a 6700 0020 		beq waitpbra
+  17 010e 0C80 0000 		cmpi.l #1, %D0
+  17      0001 
+  18 0114 6700 000C 		beq vbra
+  19               	pbra:
+  20 0118 4EB9 0000 		jsr p_body /*P操作本体飛び*/
+  20      0000 
+  21 011e 6000 0012 		bra finish
+  22               	vbra:
+  23 0122 4EB9 0000 		jsr v_body
+  23      0000 
+  24 0128 6000 0008 		bra finish
+  25               	waitpbra:
+  26 012c 4EB9 0000 		jsr waitp_body
+  26      0000 
+  27               	
+  28               	finish:
+  29 0132 588F      	    addq.l #4, %SP     /* 引数分のスタックを戻す */
+68K GAS  mtk_asm.s 			page 5
+
+
+  30 0134 46DF      		move.w (%SP)+, %SR /* SRを復帰（走行レベルを戻す） */
+  31 0136 4CDF 0003 		movem.l (%SP)+, %D0-%D1
+  32 013a 4E73      		rte
+  33               	
+  34               	*****************************
+  35               	***P
+  36               	*****************************
+  37               	.global P
+  38               	.even
+  39               	P:
+  40 013c 4E56 0000 	    link.w %FP, #0
+  41 0140 48E7 C000 	    movem.l %D0-%D1, -(%SP)
+  42 0144 7000      	    move.l #0, %D0     /* PシステムコールID */
+  43 0146 222E 0008 	    move.l 8(%FP), %D1 /* 引数 */
+  44 014a 4E41      		trap #1            /*スーパーバイザモードに入って、ベクタテーブル？のtrap#
+  45 014c 4CDF 0003 	    movem.l (%SP)+, %D0-%D1
+  46 0150 4E5E      	    unlk %FP
+  47 0152 4E75      		rts
+  48               	
+  49               	*****************************
+  50               	***V
+  51               	*****************************
+  52               	.global V
+  53               	.even
+  54               	V:
+  55 0154 4E56 0000 	    link.w %FP, #0
+  56 0158 48E7 C000 	    movem.l %D0-%D1, -(%SP)
+  57 015c 7001      	    move.l #1, %D0     /* VシステムコールID */
+  58 015e 222E 0008 	    move.l 8(%FP), %D1 /* 引数 */
+  59 0162 4E41      		trap #1            /*スーパーバイザモードに入って、ベクタテーブル？のtrap#
+  60 0164 4CDF 0003 	    movem.l (%SP)+, %D0-%D1
+  61 0168 4E5E      	    unlk %FP
+  62 016a 4E75      	    rts
+  63               	*****************************
+  64               	.global waitP
+  65               	.even
+  66               	waitP:
+  67 016c 4E56 0000 	    link.w %FP, #0
+  68 0170 48E7 C000 	    movem.l %D0-%D1, -(%SP)
+  69 0174 7002      	    move.l #2, %D0     /* PシステムコールID */
+  70 0176 222E 0008 	    move.l 8(%FP), %D1 /* 引数 */
+  71 017a 4E41      	    trap #1            /*スーパーバイザモードに入って、ベクタテーブル？のtr
+  72               	*/
+  73 017c 4CDF 0003 	    movem.l (%SP)+, %D0-%D1
+  74 0180 4E5E      	    unlk %FP
+  75 0182 4E75      	    rts
+  76               	
+  77               	
+ 127               	
+ 128               	.section .bss
+ 129               	.extern task_tab
+ 130               	.extern curr_task
+ 131               	.extern next_task
+68K GAS  mtk_asm.s 			page 6
+
+
+DEFINED SYMBOLS
+              defs.s:2      *ABS*:0000000000fff000 REGBASE
+              defs.s:3      *ABS*:0000000000d00000 IOBASE
+              defs.s:6      *ABS*:0000000000fff300 IVR
+              defs.s:7      *ABS*:0000000000fff304 IMR
+              defs.s:8      *ABS*:0000000000fff30c ISR
+              defs.s:9      *ABS*:0000000000fff310 IPR
+              defs.s:12     *ABS*:0000000000fff600 TCTL1
+              defs.s:13     *ABS*:0000000000fff602 TPRER1
+              defs.s:14     *ABS*:0000000000fff604 TCMP1
+              defs.s:15     *ABS*:0000000000fff608 TCN1
+              defs.s:16     *ABS*:0000000000fff60a TSTAT1
+              defs.s:19     *ABS*:0000000000fff900 USTCNT1
+              defs.s:20     *ABS*:0000000000fff902 UBAUD1
+              defs.s:21     *ABS*:0000000000fff904 URX1
+              defs.s:22     *ABS*:0000000000fff906 UTX1
+              defs.s:25     *ABS*:0000000000fff910 USTCNT2
+              defs.s:26     *ABS*:0000000000fff912 UBAUD2
+              defs.s:27     *ABS*:0000000000fff914 URX2
+              defs.s:28     *ABS*:0000000000fff916 UTX2
+              defs.s:32     *ABS*:0000000000d0002f LED7
+              defs.s:33     *ABS*:0000000000d0002d LED6
+              defs.s:34     *ABS*:0000000000d0002b LED5
+              defs.s:35     *ABS*:0000000000d00029 LED4
+              defs.s:36     *ABS*:0000000000d0003f LED3
+              defs.s:37     *ABS*:0000000000d0003d LED2
+              defs.s:38     *ABS*:0000000000d0003b LED1
+              defs.s:39     *ABS*:0000000000d00039 LED0
+              defs.s:42     *ABS*:0000000000000001 SYSCALL_NUM_GETSTRING
+              defs.s:43     *ABS*:0000000000000002 SYSCALL_NUM_PUTSTRING
+              defs.s:44     *ABS*:0000000000000003 SYSCALL_NUM_RESET_TIMER
+              defs.s:45     *ABS*:0000000000000004 SYSCALL_NUM_SET_TIMER
+              defs.s:46     *ABS*:0000000000000005 SYSCALL_NUM_SKIPMT
+           mtk_asm.s:4      *ABS*:0000000000000014 SIZEOF_TCB_TYPE
+           mtk_asm.s:5      *ABS*:0000000000000004 TCB_TYPE_STACK_PTR_OFFSET
+           mtk_asm.s:6      *ABS*:0000000000000010 TCB_TYPE_NEXT_OFFSET
+           mtk_asm.s:10     .text:0000000000000000 first_task
+           mtk_asm.s:34     .data:0000000000000000 SINGLE_SSP
+           mtk_asm.s:30     .text:0000000000000026 BACKTO_SINGLE
+           mtk_asm.s:39     .text:0000000000000028 swtch
+           mtk_asm.s:76     .text:0000000000000072 hard_clock
+           mtk_asm.s:89     .text:00000000000000ac exe_addq
+           mtk_asm.s:100    .text:00000000000000ce end_addq
+           mtk_asm.s:108    .text:00000000000000de init_timer
+           mtk_asm.s:121    .text:00000000000000f2 skipmt
+          semasema.s:10     .text:00000000000000f8 pv_handler
+          semasema.s:25     .text:000000000000012c waitpbra
+          semasema.s:22     .text:0000000000000122 vbra
+          semasema.s:19     .text:0000000000000118 pbra
+          semasema.s:28     .text:0000000000000132 finish
+          semasema.s:39     .text:000000000000013c P
+          semasema.s:54     .text:0000000000000154 V
+          semasema.s:66     .text:000000000000016c waitP
+
+UNDEFINED SYMBOLS
+curr_task
+task_tab
+68K GAS  mtk_asm.s 			page 7
+
+
+next_task
+ready
+addq
+sched
+p_body
+v_body
+waitp_body
