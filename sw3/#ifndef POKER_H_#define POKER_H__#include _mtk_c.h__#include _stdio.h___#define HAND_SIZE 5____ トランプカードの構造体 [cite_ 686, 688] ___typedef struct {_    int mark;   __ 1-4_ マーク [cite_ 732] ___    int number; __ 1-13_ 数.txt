@@ -1,0 +1,30 @@
+#ifndef POKER_H
+#define POKER_H
+
+#include "mtk_c.h"
+#include <stdio.h>
+
+#define HAND_SIZE 5
+
+/* トランプカードの構造体 [cite: 686, 688] */
+typedef struct {
+    int mark;   /* 1-4: マーク [cite: 732] */
+    int number; /* 1-13: 数字 [cite: 733] */
+} CARD;
+
+/* 共有資源の宣言 [cite: 686, 699] */
+extern CARD hand[2][HAND_SIZE];
+extern volatile int phase[2]; /* 0:交換中, 1:確定 [cite: 699, 831] */
+extern int is_finish;
+extern int winner;
+
+/* 関数プロトタイプ宣言 [cite: 686, 490] */
+void init_game();
+void disp_field(int ch, FILE *cha);
+void fill_card(int ch, int num);
+int evaluate_hand(int player_id);
+void start_game();
+void player0();
+void player1();
+
+#endif

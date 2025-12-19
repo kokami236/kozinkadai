@@ -1,0 +1,40 @@
+void start_game() {
+    int i;
+    while(1) {
+        /* 1. ゲーム開始のカウントダウン演出 */
+        for(i = 3; i > 0; i--) {
+            fprintf(com0out, "Game Start in %d...\n", i);
+            fprintf(com1out, "Game Start in %d...\n", i);
+            sleeptime(10); /* 約1秒待機 */
+        }
+        fprintf(com0out, "--- GO!! ---\n");
+        fprintf(com1out, "--- GO!! ---\n");
+
+        /* 2. プレイヤーのカード交換完了を待つ */
+        while(phase[0] == 0 || phase[1] == 0);
+        
+        /* 3. 判定中の「タメ」を作る演出 */
+        P(0); P(1); /* 割り込み禁止 */
+        fprintf(com0out, "\n結果判定中...");
+        fprintf(com1out, "\n結果判定中...");
+        
+        sleeptime(20); /* 2秒間ドキドキさせる */
+        
+        /* 4. 役判定と勝敗の表示 */
+        int s0 = evaluate_hand(0);
+        int s1 = evaluate_hand(1);
+        
+        if(s0 > s1) winner = 0;
+        else if(s1 > s0) winner = 1;
+        else winner = 2;
+
+        /* 先ほど作成した disp_poker_result を呼び出すか、ここに直接書く */
+        disp_poker_result(); 
+
+        is_finish = 1;
+        V(0); V(1);
+        
+        /* 終了後は無限ループで停止 */
+        while(1); 
+    }
+}
