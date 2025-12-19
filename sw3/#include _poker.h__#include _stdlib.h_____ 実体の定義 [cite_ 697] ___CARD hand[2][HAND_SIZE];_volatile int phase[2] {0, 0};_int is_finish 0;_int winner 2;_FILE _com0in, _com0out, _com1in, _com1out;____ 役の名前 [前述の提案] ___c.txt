@@ -1,0 +1,81 @@
+#include "poker.h"
+#include <stdlib.h>
+
+/* 実体の定義 [cite: 697] */
+CARD hand[2][HAND_SIZE];
+volatile int phase[2] = {0, 0};
+int is_finish = 0;
+int winner = 2;
+FILE *com0in, *com0out, *com1in, *com1out;
+
+/* 役の名前 [前述の提案] */
+char *poker_role_str[] = {"ブタ", "ワンペア", "ツーペア", "スリーカード", "フルハウス", "フラッシュ"};
+
+/* プレイヤー0のタスク [cite: 838, 938] */
+void player0() {
+    int num;
+    while(1) {
+        P(0); /* セマフォ0で自タスク制御 [cite: 841, 939] */
+        if(is_finish) {
+            fprintf(com0out, "\n--- ゲーム終了 ---\n");
+            fprintf(com0out, "勝者: Player%d\n", winner);
+            P(0); /* 停止 [cite: 848] */
+        }
+
+        phase[0] = 0;
+        disp_field(0, com0out); /* 表示 [cite: 708] */
+        fprintf(com0out, "交換する番号(0-4)を入力、確定は9: \n");
+
+        while(1) {
+            fscanf(com0in, "%d", &num); /* 入力待ち [cite: 860, 911] */
+            if(num == 9) break;
+            if(num >= 0 && num < HAND_SIZE) {
+                P(2); /* 山札アクセスのための排他制御 [cite: 861, 942] */
+                fill_card(0, num); /* カード補充 [cite: 723, 873] */
+                V(2);
+                disp_field(0, com0out);
+            }
+        }
+        phase[0] = 1; /* 交換完了フラグ [cite: 831, 944] */
+        V(0);
+        while(phase[0] == 1 && !is_finish); /* 判定待ち空ループ [cite: 831, 944] */
+    }
+}
+
+/* プレイヤー1のタスク (player0と同様のため中略) [cite: 890, 938] */
+
+/* ゲーム管理タスク [cite: 792, 831] */
+void start_game() {
+    while(1) {
+        while(phase[0] == 0 || phase[1] == 0); /* 両者の完了待ち [cite: 831, 944] */
+        P(0); P(1); /* 判定中の割り込み防止 [cite: 832, 939] */
+
+        int s0 = evaluate_hand(0);
+        int s1 = evaluate_hand(1);
+
+        /* 結果表示 [前述の提案] */
+        fprintf(com0out, "あなたの役: %s / 相手: %s\n", poker_role_str[s0], poker_role_str[s1]);
+        fprintf(com1out, "あなたの役: %s / 相手: %s\n", poker_role_str[s1], poker_role_str[s0]);
+
+        if(s0 > s1) winner = 0;
+        else if(s1 > s0) winner = 1;
+        else winner = 2;
+
+        is_finish = 1; /* 終了フラグ [cite: 820, 825, 878] */
+        V(0); V(1);
+    }
+}
+
+/* メイン関数 [cite: 541, 948] */
+int main() {
+    file_ope();    /* ポート割当 [cite: 701, 949] */
+    init_kernel(); /* カーネル初期化 [cite: 222, 543] */
+    init_game();   /* カード準備 [cite: 780, 789] */
+    
+    set_task(start_game); /* タスク登録 [cite: 544, 949] */
+    set_task(player0);
+    set_task(player1);
+    
+    begin_sch();   /* マルチタスク開始 [cite: 549, 949] */
+    return 0;
+}
