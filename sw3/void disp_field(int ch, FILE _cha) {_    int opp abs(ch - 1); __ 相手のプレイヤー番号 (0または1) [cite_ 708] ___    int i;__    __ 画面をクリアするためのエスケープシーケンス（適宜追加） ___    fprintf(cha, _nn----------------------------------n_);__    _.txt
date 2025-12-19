@@ -1,0 +1,25 @@
+void disp_field(int ch, FILE *cha) {
+    int opp = abs(ch - 1); /* 相手のプレイヤー番号 (0または1) [cite: 708] */
+    int i;
+
+    /* 画面をクリアするためのエスケープシーケンス（適宜追加） */
+    fprintf(cha, "\n\n----------------------------------\n");
+
+    /* 1. 相手（上側）の手札を表示 [cite: 717, 718] */
+    fprintf(cha, "Player%d (OPPONENT): ", opp);
+    for (i = 0; i < HAND_SIZE; i++) {
+        fprintf(cha, "[%s%s] ", mark_str[hand[opp][i].mark], number_str[hand[opp][i].number]);
+    }
+    fprintf(cha, "\n\n\n"); /* 台札の代わりに余白を空ける [cite: 717] */
+
+    /* 2. 自分（下側）の手札を表示 [cite: 717, 718] */
+    fprintf(cha, "Player%d (YOU):      ", ch);
+    for (i = 0; i < HAND_SIZE; i++) {
+        fprintf(cha, "[%s%s] ", mark_str[hand[ch][i].mark], number_str[hand[ch][i].number]);
+    }
+    fprintf(cha, "\n");
+    
+    /* カード選択用の番号を表示（0〜4） */
+    fprintf(cha, "                (0)   (1)   (2)   (3)   (4)\n");
+    fprintf(cha, "----------------------------------\n\n");
+}
