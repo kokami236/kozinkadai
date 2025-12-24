@@ -8,7 +8,7 @@ inbyte:
     link.w  %a6, #-4
     movem.l %d1-%d3, -(%sp)
 
-inbyte_retry:
+inbyte_loop1:
     move.l  #SYSCALL_NUM_GETSTRING, %d0
     move.l  #0, %d1
     
@@ -20,7 +20,7 @@ inbyte_retry:
     trap    #0
 
     cmpi.l  #1, %d0
-    bne     inbyte_retry
+    bne     inbyte_loop1
 
     clr.l   %d0
     /* 受信データの取得 */
@@ -82,4 +82,3 @@ inkey_end:
     movem.l (%sp)+, %d1-%d3/%a0 /* 退避したレジスタだけ戻す */
     unlk    %a6                 /* スタックフレーム破棄 */
     rts
-	
