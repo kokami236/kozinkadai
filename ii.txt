@@ -15,6 +15,8 @@ void init_kernel(void){
     *(int *)(TRAP1_ID * 4) = (int)(uintptr_t)pv_handler;
     ...
 }
+void *orig_trap0;  /* ★追加：元のtrap#0を保存 */
+
 void init_kernel(void) {
     /* TCB初期化 */
     for (int i = 0; i < NUMTASK; i++) {
@@ -25,22 +27,25 @@ void init_kernel(void) {
         tcb->status    = TASK_UNDEF;
         tcb->next      = NULLTASKID;
     }
-    /* task_tab[0]は未使用（NULLTASKID用） */
     task_tab[0].next = NULLTASKID;
 
-    /* readyキュー初期化 */
     ready = NULLTASKID;
 
-    /* TRAP#1に pv_handler を登録 */
+    /* ★追加：TRAP#0 をチェイン差し替え */
+    orig_trap0 = *(void **)(TRAP0_ID * 4);
+    *(void **)(TRAP0_ID * 4) = (void *)trap0_handler;
+
+    /* TRAP#1に pv_handler を登録（今まで通り） */
     *(int *)(TRAP1_ID * 4) = (int)(uintptr_t)pv_handler;
 
     /* セマフォ初期化 */
     for (int i = 0; i < NUMSEMAPHORE; i++) {
-        semaphore[i].count     = 1;          /* 通常P/Vの初期値（必要に応じて上書き） */
-        semaphore[i].nst       = 0;          /* waitP用（使うものだけ設定） */
-        semaphore[i].task_list = NULLTASKID; /* 待ち行列先頭 */
+        semaphore[i].count     = 1;
+        semaphore[i].nst       = 0;
+        semaphore[i].task_list = NULLTASKID;
     }
 }
+
 
 
 
@@ -74,4 +79,5 @@ do_skipmt:
     jsr     swtch               | swtchはrteで戻る(=基本帰ってこない)
 
     rte                         | 保険（通常ここには来ない）
+
 
