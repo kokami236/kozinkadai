@@ -1,0 +1,47 @@
+#define TRAP0_ID 32          /* trap #0 のベクタ番号(=32+0) */
+extern void trap0_handler(void);
+extern void *orig_trap0;
+
+
+void *orig_trap0;
+
+void init_kernel(void){
+    ...
+    /* trap #0 をチェイン差し替え */
+    orig_trap0 = *(void **)(TRAP0_ID * 4);
+    *(void **)(TRAP0_ID * 4) = (void *)trap0_handler;
+
+    /* 既にある trap#1 登録はそのまま */
+    *(int *)(TRAP1_ID * 4) = (int)(uintptr_t)pv_handler;
+    ...
+}
+
+
+.global trap0_handler
+.extern orig_trap0
+.extern addq
+.extern sched
+.extern swtch
+.extern curr_task
+.extern ready
+
+.even
+trap0_handler:
+    cmpi.l  #SYSCALL_NUM_SKIPMT, %D0
+    beq     do_skipmt
+
+    * それ以外は元のtrap#0へ（チェイン）
+    move.l  orig_trap0, %A0
+    jmp     (%A0)
+
+do_skipmt:
+    * addq(&ready, curr_task)
+    move.l  curr_task, -(%SP)   | arg2 = task_id
+    move.l  #ready,    -(%SP)   | arg1 = &ready
+    jsr     addq
+    addq.l  #8, %SP
+
+    jsr     sched
+    jsr     swtch               | swtchはrteで戻る(=基本帰ってこない)
+
+    rte                         | 保険（通常ここには来ない）
