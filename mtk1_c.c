@@ -2,12 +2,11 @@
 #include <stdint.h>
 #include "mtk_c.h"
 
-/*
- *  注意：
- *  - P/V/waitP は semasema.s から trap#1 → pv_handler → p_body/v_body/waitp_body を呼びます
- *  - この mtk_c.c は「あなたが貼ってくれた現状の設計（removeqがTCBポインタを受ける）」に合わせてあります
- *  - 安定化のため wakeup に NULL ガードを追加しています（v_body連打で重要）
- */
+/* asm側の関数 */
+extern void pv_handler(void);
+extern void init_timer(void);
+extern void first_task(void);
+extern void swtch(void);
 
 /* =========================
  *  グローバル
@@ -21,17 +20,45 @@ TCB_TYPE task_tab[NUMTASK + 1];
 STACK_TYPE stacks[NUMTASK];
 SEMAPHORE_TYPE semaphore[NUMSEMAPHORE];
 
-/* asm側にある関数（ヘッダに無ければここで宣言） */
-extern void pv_handler(void);
-extern void init_timer(void);
-extern void first_task(void);
-extern void swtch(void);
+/* =========================
+ *  内部プロトタイプ
+ * ========================= */
+void waitp_body(int ID);
 
 /* =========================
- *  kernel init
+ *  キュー操作（先頭TASK_IDで管理）
+ * ========================= */
+void addq(TASK_ID_TYPE *head, TASK_ID_TYPE task_id) {
+    if (task_id == NULLTASKID) return;
+
+    if (*head == NULLTASKID) {
+        *head = task_id;
+        task_tab[task_id].next = NULLTASKID;
+        return;
+    }
+
+    TASK_ID_TYPE cur = *head;
+    while (task_tab[cur].next != NULLTASKID) {
+        cur = task_tab[cur].next;
+    }
+    task_tab[cur].next = task_id;
+    task_tab[task_id].next = NULLTASKID;
+}
+
+TASK_ID_TYPE removeq(TASK_ID_TYPE *head) {
+    TASK_ID_TYPE id = *head;
+    if (id == NULLTASKID) return NULLTASKID;
+
+    *head = task_tab[id].next;
+    task_tab[id].next = NULLTASKID;
+    return id;
+}
+
+/* =========================
+ *  init
  * ========================= */
 void init_kernel(void) {
-    /* TCB配列を初期化する */
+    /* TCB初期化 */
     for (int i = 0; i < NUMTASK; i++) {
         TCB_TYPE *tcb = &task_tab[i + 1];
         tcb->task_addr = NULL;
@@ -40,28 +67,29 @@ void init_kernel(void) {
         tcb->status    = TASK_UNDEF;
         tcb->next      = NULLTASKID;
     }
+    /* task_tab[0]は未使用（NULLTASKID用） */
+    task_tab[0].next = NULLTASKID;
 
-    /* readyキューを初期化する */
+    /* readyキュー初期化 */
     ready = NULLTASKID;
 
-    /* pv_handlerをTRAP #1の割り込みベクタに登録 */
+    /* TRAP#1に pv_handler を登録 */
     *(int *)(TRAP1_ID * 4) = (int)(uintptr_t)pv_handler;
 
-    /* セマフォの値を初期化する */
+    /* セマフォ初期化 */
     for (int i = 0; i < NUMSEMAPHORE; i++) {
-        SEMAPHORE_TYPE *sema = &semaphore[i];
-        sema->count     = 1;          /* 1: 利用可能, <1: 待ちタスクがある（通常のP/V用の初期値） */
-        sema->nst       = 0;          /* waitPで使う同期参加数N（必要なものだけ後で設定） */
-        sema->task_list = NULLTASKID; /* 待ち行列 */
+        semaphore[i].count     = 1;          /* 通常P/Vの初期値（必要に応じて上書き） */
+        semaphore[i].nst       = 0;          /* waitP用（使うものだけ設定） */
+        semaphore[i].task_list = NULLTASKID; /* 待ち行列先頭 */
     }
 }
 
 /* =========================
- *  task create / start
+ *  タスク生成
  * ========================= */
 void set_task(void (*task_addr)(void)) {
-    /* タスクIDの決定 */
     TASK_ID_TYPE task_id = NULLTASKID;
+
     for (int i = 0; i < NUMTASK; i++) {
         TCB_TYPE *tcb = &task_tab[i + 1];
         if (tcb->status == TASK_UNDEF || tcb->status == TASK_FINISHED) {
@@ -69,7 +97,7 @@ void set_task(void (*task_addr)(void)) {
             break;
         }
     }
-    if (task_id == NULLTASKID) return; /* 空きがない */
+    if (task_id == NULLTASKID) return;
 
     new_task = task_id;
 
@@ -78,28 +106,19 @@ void set_task(void (*task_addr)(void)) {
     tcb->status    = TASK_INUSE;
     tcb->stack_ptr = init_stack(new_task);
 
+    /* readyへ投入 */
     addq(&ready, new_task);
-    printf("[OK] set_task\n");
-}
 
-void begin_sch(void) {
-    /* 最初のタスクの決定：ready先頭を取り出す */
-    curr_task = removeq(&task_tab[ready]);
-    if (DEBUG) printf("[DEBUG] curr_task = %d\n", curr_task);
-
-    init_timer();
-    printf("[OK] init_timer\n");
-
-    first_task(); /* 最初のタスクへ遷移（戻らない） */
+    if (!DEBUG) printf("[OK] set_task\n");
 }
 
 /* =========================
- *  stack init
+ *  スタック初期化（あなたの実装踏襲）
  * ========================= */
 void *init_stack(TASK_ID_TYPE id) {
-    char  *ustack_top = &stacks[id - 1].ustack[STKSIZE];
-    char  *sstack     = stacks[id - 1].sstack;
-    int   *ssp        = (int *)(sstack + STKSIZE);
+    char *ustack_top = &stacks[id - 1].ustack[STKSIZE];
+    char *sstack     = stacks[id - 1].sstack;
+    int  *ssp        = (int *)(sstack + STKSIZE);
 
     *(--ssp) = (int)(uintptr_t)task_tab[id].task_addr; /* initial PC */
 
@@ -107,77 +126,41 @@ void *init_stack(TASK_ID_TYPE id) {
     *(--ssp_s) = (short)0x0000;                        /* initial SR */
     ssp = (int *)ssp_s;
 
-    ssp -= 15;                                         /* 15x4 bytes for registers */
+    ssp -= 15;                                         /* D0-D7,A0-A6 */
     *(--ssp) = (int)(uintptr_t)ustack_top;             /* initial USP */
 
     return ssp;
 }
 
 /* =========================
- *  queue ops
- * ========================= */
-void addq(TASK_ID_TYPE *q, TASK_ID_TYPE task_id) {
-    if (DEBUG) printf("[DEBUG] addq: added task_id = %d\n", task_id);
-
-    /* キューが空 */
-    if (*q == NULLTASKID) {
-        *q = task_id;
-    } else {
-        TASK_ID_TYPE cur = *q;
-        while (task_tab[cur].next != NULLTASKID) cur = task_tab[cur].next;
-        task_tab[cur].next = task_id;
-    }
-    task_tab[task_id].next = NULLTASKID;
-}
-
-TASK_ID_TYPE removeq(TCB_TYPE *q_ptr) {
-    TASK_ID_TYPE task_id;
-
-    /* semaphore キューの場合（現状の作りに合わせる） */
-    for (int i = 0; i < NUMSEMAPHORE; i++) {
-        if (q_ptr == &task_tab[semaphore[i].task_list]) {
-            task_id = semaphore[i].task_list;
-            if (task_id == NULLTASKID) return NULLTASKID;
-
-            semaphore[i].task_list = (*q_ptr).next;
-            if (DEBUG) printf("[DEBUG] removeq returns %d (semaphore queue)\n", task_id);
-            return task_id;
-        }
-    }
-
-    /* ready キューの場合 */
-    if (q_ptr == &task_tab[ready]) {
-        task_id = ready;
-        if (task_id == NULLTASKID) return NULLTASKID;
-
-        ready = (*q_ptr).next;
-        if (DEBUG) printf("[DEBUG] removeq returns %d (ready queue)\n", task_id);
-        return task_id;
-    }
-
-    return NULLTASKID;
-}
-
-/* =========================
- *  scheduler
+ *  スケジューラ
  * ========================= */
 void sched(void) {
-    if (DEBUG) printf("[DEBUG] sched()\n");
+    next_task = removeq(&ready);
 
-    next_task = removeq(&task_tab[ready]);
-    if (DEBUG) printf("[DEBUG] sched: next_task = %d\n", next_task);
-
+    /* readyが空なら待つ（本来はidleタスク等が望ましいが、課題仕様に合わせる） */
     while (next_task == NULLTASKID) {
-        /* readyが空なら待つ（本来はアイドル等が望ましいが現状仕様に合わせる） */
+        /* spin */
     }
 }
 
 /* =========================
- *  semaphore bodies (called from pv_handler)
+ *  開始
+ * ========================= */
+void begin_sch(void) {
+    curr_task = removeq(&ready);
+    if (DEBUG) printf("[DEBUG] curr_task = %d\n", curr_task);
+
+    init_timer();
+    if (!DEBUG) printf("[OK] init_timer\n");
+
+    first_task(); /* ここから戻らない */
+}
+
+/* =========================
+ *  セマフォ本体（pv_handler から呼ばれる）
  * ========================= */
 void p_body(int ID) {
-    if (DEBUG) printf("[DEBUG] p_body(%d)\n", ID);
-
     SEMAPHORE_TYPE *sema = &semaphore[ID];
     sema->count -= 1;
 
@@ -187,8 +170,6 @@ void p_body(int ID) {
 }
 
 void v_body(int ID) {
-    if (DEBUG) printf("[DEBUG] v_body(%d)\n", ID);
-
     SEMAPHORE_TYPE *sema = &semaphore[ID];
     sema->count += 1;
 
@@ -198,29 +179,28 @@ void v_body(int ID) {
 }
 
 /*
- * waitP（バリア同期）本体：syscall ID=2 で pv_handler から呼ばれる
- *  - semaphore[ID].count は必ず 0 初期化
- *  - semaphore[ID].nst   は同期参加タスク数 N を設定
+ * waitP本体（syscall ID=2）
+ * - semaphore[ID].count は必ず 0 初期化
+ * - semaphore[ID].nst   は参加タスク数 N を設定
  */
 void waitp_body(int ID) {
-    if (DEBUG) printf("[DEBUG] waitp_body(%d)\n", ID);
-
     SEMAPHORE_TYPE *sp = &semaphore[ID];
 
-    /* まだ全員揃っていない：通常のPと同じ（必要ならsleepへ） */
+    /* まだ全員そろっていない */
     if (sp->count != -(sp->nst - 1)) {
         p_body(ID);
         return;
     }
 
-    /* 最後の1人：待っている(N-1)個をまとめて起こす */
+    /* 最後の1人：待っている(N-1)人を起こす */
     for (int i = 0; i < sp->nst - 1; i++) {
         v_body(ID);
     }
 
-    /* 最後に来た自分も ready に戻して譲る */
+    /* 自分もreadyに戻して譲る */
     task_tab[curr_task].status = TASK_READY;
     addq(&ready, curr_task);
+
     sched();
     swtch();
 }
@@ -229,9 +209,8 @@ void waitp_body(int ID) {
  *  sleep / wakeup
  * ========================= */
 void sleep(int ch) {
-    if (DEBUG) printf("[DEBUG] sleep(%d)\n", ch);
-
     SEMAPHORE_TYPE *sema = &semaphore[ch];
+
     addq(&sema->task_list, curr_task);
     task_tab[curr_task].status = TASK_SLEEP;
 
@@ -240,13 +219,11 @@ void sleep(int ch) {
 }
 
 void wakeup(int ch) {
-    if (DEBUG) printf("[DEBUG] wakeup(%d)\n", ch);
-
     SEMAPHORE_TYPE *sema = &semaphore[ch];
-    TASK_ID_TYPE woken_task_id = removeq(&task_tab[sema->task_list]);
 
-    if (woken_task_id == NULLTASKID) return; /* ★重要：空なら何もしない */
+    TASK_ID_TYPE woken = removeq(&sema->task_list);
+    if (woken == NULLTASKID) return;  /* v_body連打対策 */
 
-    addq(&ready, woken_task_id);
-    task_tab[woken_task_id].status = TASK_READY;
+    task_tab[woken].status = TASK_READY;
+    addq(&ready, woken);
 }
