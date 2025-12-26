@@ -15,6 +15,35 @@ void init_kernel(void){
     *(int *)(TRAP1_ID * 4) = (int)(uintptr_t)pv_handler;
     ...
 }
+void init_kernel(void) {
+    /* TCB初期化 */
+    for (int i = 0; i < NUMTASK; i++) {
+        TCB_TYPE *tcb = &task_tab[i + 1];
+        tcb->task_addr = NULL;
+        tcb->stack_ptr = NULL;
+        tcb->priority  = 0;
+        tcb->status    = TASK_UNDEF;
+        tcb->next      = NULLTASKID;
+    }
+    /* task_tab[0]は未使用（NULLTASKID用） */
+    task_tab[0].next = NULLTASKID;
+
+    /* readyキュー初期化 */
+    ready = NULLTASKID;
+
+    /* TRAP#1に pv_handler を登録 */
+    *(int *)(TRAP1_ID * 4) = (int)(uintptr_t)pv_handler;
+
+    /* セマフォ初期化 */
+    for (int i = 0; i < NUMSEMAPHORE; i++) {
+        semaphore[i].count     = 1;          /* 通常P/Vの初期値（必要に応じて上書き） */
+        semaphore[i].nst       = 0;          /* waitP用（使うものだけ設定） */
+        semaphore[i].task_list = NULLTASKID; /* 待ち行列先頭 */
+    }
+}
+
+
+
 
 
 .global trap0_handler
@@ -45,3 +74,4 @@ do_skipmt:
     jsr     swtch               | swtchはrteで戻る(=基本帰ってこない)
 
     rte                         | 保険（通常ここには来ない）
+
