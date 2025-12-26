@@ -1,0 +1,119 @@
+#ifndef MTK_C_H
+#define MTK_C_H
+
+#include <stdio.h>
+
+/* =========================
+ *  Debug
+ * ========================= */
+#define DEBUG 0 /* 0:normal, 1:debug */
+
+/* =========================
+ *  Kernel basic params
+ * ========================= */
+#define NULLTASKID    0 /* キューの終端(空) */
+#define NUMTASK       6 /* 最大タスク数 */
+#define STKSIZE    8192 /* スタックサイズ */
+#define NUMSEMAPHORE  8 /* セマフォの数 */
+
+#define TASK_UNDEF    0
+#define TASK_INUSE    1
+#define TASK_FINISHED 2
+#define TASK_READY    3
+#define TASK_SLEEP    4
+
+typedef int TASK_ID_TYPE;
+typedef int SEMAPHORE_ID_TYPE;
+
+/* =========================
+ *  TRAP vector
+ * ========================= */
+#define TRAP1_ID 33
+extern void pv_handler(void);
+
+/* =========================
+ *  Data structures
+ * ========================= */
+typedef struct {
+    int count;                /* P/V 用カウンタ。waitPでも使用 */
+    int nst;                  /* waitP: 同期参加タスク数 N */
+    TASK_ID_TYPE task_list;   /* 待ち行列(先頭タスクID) */
+} SEMAPHORE_TYPE;
+
+typedef struct {
+    void (*task_addr)(void);
+    void *stack_ptr;
+    int priority;
+    int status;
+    TASK_ID_TYPE next;        /* ready/sem待ち行列の next */
+} TCB_TYPE;
+
+extern TCB_TYPE task_tab[NUMTASK + 1];
+
+typedef struct {
+    char ustack[STKSIZE];
+    char sstack[STKSIZE];
+} STACK_TYPE;
+
+extern STACK_TYPE stacks[NUMTASK];
+
+/* =========================
+ *  Global kernel state
+ * ========================= */
+extern TASK_ID_TYPE curr_task;
+extern TASK_ID_TYPE new_task;
+extern TASK_ID_TYPE next_task;
+extern TASK_ID_TYPE ready;
+extern SEMAPHORE_TYPE semaphore[NUMSEMAPHORE];
+
+/* =========================
+ *  multi task
+ * ========================= */
+void init_kernel(void);
+void set_task(void (*task_addr)(void));
+void *init_stack(TASK_ID_TYPE id);
+void begin_sch(void);
+
+/*
+ * キュー操作：先頭タスクID(readyやsemaphore[i].task_list)へのポインタを渡す
+ * 例) addq(&ready, tid), removeq(&ready)
+ *     addq(&semaphore[id].task_list, tid), removeq(&semaphore[id].task_list)
+ */
+void addq(TASK_ID_TYPE *head, TASK_ID_TYPE task_id);
+TASK_ID_TYPE removeq(TASK_ID_TYPE *head);
+
+void sched(void);
+
+extern void first_task(void);
+extern void swtch(void);
+
+/* =========================
+ *  timer
+ * ========================= */
+extern void init_timer(void);
+extern void skipmt(void);
+
+/* =========================
+ *  semaphore API (user)
+ * ========================= */
+extern void P(int ch);
+extern void V(int ch);
+extern void waitP(int ch);
+
+/* semaphore internals (called from pv_handler) */
+void sleep(int ch);
+void wakeup(int ch);
+void p_body(int ID);
+void v_body(int ID);
+void waitp_body(int ID);  /* ★追加：syscall ID=2 の本体 */
+
+/* =========================
+ *  map (UART etc.)
+ * ========================= */
+extern FILE *com0in;
+extern FILE *com0out;
+extern FILE *com1in;
+extern FILE *com1out;
+void fd_mapping(void);
+
+#endif /* MTK_C_H */
