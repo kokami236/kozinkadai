@@ -1,0 +1,96 @@
+.section .text
+
+*****************************
+    *** pv_handler (trap #1)
+    *** D0: syscall ID
+    ***   0 = P
+    ***   1 = V
+    ***   2 = waitP
+    *** D1: sem_id (引数)
+*****************************
+.global pv_handler
+.even
+pv_handler:
+    movem.l %D0-%D1, -(%SP)    /* D0,D1退避（スーパーバイザSSP上） */
+    move.w  %SR, -(%SP)        /* SR退避 */
+    move.w  #0x2700, %SR       /* IPL=7 (割り込み禁止レベル) */
+
+    move.l  %D1, -(%SP)        /* C関数へ渡す引数 sem_id を積む */
+
+    cmpi.l  #0, %D0
+    beq     call_p
+
+    cmpi.l  #1, %D0
+    beq     call_v
+
+    cmpi.l  #2, %D0
+    beq     call_waitp
+
+    bra     finish             /* 不明ID → 何もしない */
+
+call_p:
+    jsr     p_body
+    bra     finish
+
+call_v:
+    jsr     v_body
+    bra     finish
+
+call_waitp:
+    jsr     waitp_body
+    bra     finish
+
+finish:
+    addq.l  #4, %SP            /* 引数分(sem_id)のスタックを戻す */
+    move.w  (%SP)+, %SR        /* SR復帰 */
+    movem.l (%SP)+, %D0-%D1    /* D0,D1復帰 */
+    rte
+
+*****************************
+*** P (ユーザ側API)
+***  P(int sem_id)
+*****************************
+.global P
+.even
+P:
+    link.w  %FP, #0
+    movem.l %D0-%D1, -(%SP)
+    move.l  #0, %D0            /* PシステムコールID */
+    move.l  8(%FP), %D1        /* 引数 sem_id */
+    trap    #1
+    movem.l (%SP)+, %D0-%D1
+    unlk    %FP
+    rts
+
+*****************************
+*** V (ユーザ側API)
+***  V(int sem_id)
+*****************************
+.global V
+.even
+V:
+    link.w  %FP, #0
+    movem.l %D0-%D1, -(%SP)
+    move.l  #1, %D0            /* VシステムコールID */
+    move.l  8(%FP), %D1        /* 引数 sem_id */
+    trap    #1
+    movem.l (%SP)+, %D0-%D1
+    unlk    %FP
+    rts
+
+*****************************
+*** waitP (ユーザ側API)
+***  waitP(int sem_id)
+***  バリア同期用（全員そろうまで待つ）
+*****************************
+.global waitP
+.even
+waitP:
+    link.w  %FP, #0
+    movem.l %D0-%D1, -(%SP)
+    move.l  #2, %D0            /* waitPシステムコールID */
+    move.l  8(%FP), %D1        /* 引数 sem_id */
+    trap    #1
+    movem.l (%SP)+, %D0-%D1
+    unlk    %FP
+    rts
